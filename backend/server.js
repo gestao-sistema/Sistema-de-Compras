@@ -7,7 +7,7 @@ const fs      = require('fs')
 const path    = require('path')
 
 const app  = express()
-const PORT = 3001
+const PORT = process.env.PORT || 3001
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true })
 
@@ -35,8 +35,7 @@ function cacheGet(k) {
 
 function cacheSet(k, d) {
   cache.set(k, { data: d, ts: Date.now() })
-  // Persiste "compras_all" em disco para startup rápido
-  if (k === 'compras_all') {
+  if (k === 'compras_all' && !process.env.RAILWAY_ENVIRONMENT) {
     try {
       fs.writeFileSync(DISK_CACHE, JSON.stringify({ ts: Date.now(), data: d }))
       console.log(`[disk] cache salvo: ${d.length} produtos`)
