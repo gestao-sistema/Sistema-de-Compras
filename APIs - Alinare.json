@@ -1,0 +1,316 @@
+ {
+	"info": {
+		"_postman_id": "1f6e0e25-ff40-4680-8bfe-db806c499fee",
+		"name": "Alinare",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "30720025"
+	},
+	"item": [
+		{
+			"name": "Blip",
+			"item": [
+				{
+					"name": "Blip",
+					"item": [
+						{
+							"name": "Clientes",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "token",
+										"value": "81cbd168-790a-409b-b5d1-2df9c6a1fc61",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "https://api.blip.alinare.indepcloud.com.br:28876/blip/clientes?cpfcnpj=55.707.980/0001-59",
+									"protocol": "https",
+									"host": [
+										"api",
+										"blip",
+										"alinare",
+										"indepcloud",
+										"com",
+										"br"
+									],
+									"port": "28876",
+									"path": [
+										"blip",
+										"clientes"
+									],
+									"query": [
+										{
+											"key": "cpfcnpj",
+											"value": "55.707.980/0001-59"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Assistencia",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Token",
+										"value": "81cbd168-790a-409b-b5d1-2df9c6a1fc61",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "https://api.blip.alinare.indepcloud.com.br:28876/blip/assistencia?cpfcnpj=55.707.980/0001-59",
+									"protocol": "https",
+									"host": [
+										"api",
+										"blip",
+										"alinare",
+										"indepcloud",
+										"com",
+										"br"
+									],
+									"port": "28876",
+									"path": [
+										"blip",
+										"assistencia"
+									],
+									"query": [
+										{
+											"key": "cpfcnpj",
+											"value": "55.707.980/0001-59"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Assistencia Itens",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Token",
+										"value": "81cbd168-790a-409b-b5d1-2df9c6a1fc61",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "https://api.blip.alinare.indepcloud.com.br:28876/blip/assistencia/itens/002831?cpfcnpj=55.707.980/0001-59",
+									"protocol": "https",
+									"host": [
+										"api",
+										"blip",
+										"alinare",
+										"indepcloud",
+										"com",
+										"br"
+									],
+									"port": "28876",
+									"path": [
+										"blip",
+										"assistencia",
+										"itens",
+										"002831"
+									],
+									"query": [
+										{
+											"key": "cpfcnpj",
+											"value": "55.707.980/0001-59"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Blip Local",
+					"item": [
+						{
+							"name": "Clientes",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "token",
+										"value": "b811532b-69ac-4236-8829-e6e5274aa381",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "http://localhost:8081/blip/clientes?cpfcnpj=55.707.980/0001-59",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8081",
+									"path": [
+										"blip",
+										"clientes"
+									],
+									"query": [
+										{
+											"key": "cpfcnpj",
+											"value": "55.707.980/0001-59"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Assistencia",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Token",
+										"value": "b811532b-69ac-4236-8829-e6e5274aa381",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "http://localhost:8081/blip/assistencia?cpfcnpj=43594975045&limit=1",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8081",
+									"path": [
+										"blip",
+										"assistencia"
+									],
+									"query": [
+										{
+											"key": "cpfcnpj",
+											"value": "43594975045"
+										},
+										{
+											"key": "limit",
+											"value": "1"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Assistencia Itens",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Token",
+										"value": "b811532b-69ac-4236-8829-e6e5274aa381",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "http://localhost:8081/blip/assistencia/itens/000001?cpfcnpj=55.707.980/0001-59",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8081",
+									"path": [
+										"blip",
+										"assistencia",
+										"itens",
+										"000001"
+									],
+									"query": [
+										{
+											"key": "cpfcnpj",
+											"value": "55.707.980/0001-59"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "API Compras",
+			"item": [
+				{
+					"name": "Local",
+					"item": [
+						{
+							"name": "Compras",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Token",
+										"value": "4f8ec7a8-3857-4e32-ac05-c388c9772732",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "http://localhost:8081/Compras",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "8081",
+									"path": [
+										"Compras"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Compras",
+					"item": [
+						{
+							"name": "Compras",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Token",
+										"value": "f7d36a19-b46b-4fc9-b064-db8e15be9110",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "https://api.compras.alinare.indepcloud.com.br:30661/Compras?limit=10",
+									"protocol": "https",
+									"host": [
+										"api",
+										"compras",
+										"alinare",
+										"indepcloud",
+										"com",
+										"br"
+									],
+									"port": "30661",
+									"path": [
+										"Compras"
+									],
+									"query": [
+										{
+											"key": "limit",
+											"value": "10"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		}
+	]
+}

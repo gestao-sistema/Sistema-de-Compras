@@ -1,0 +1,292 @@
+import { useState, useEffect } from 'react'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { api, fBRL, fNum } from '../api/client'
+import { BadgeABC } from '../components/Badge'
+import FilialSelector from '../components/FilialSelector'
+
+const PAGE_LIMIT = 100
+
+const CURVES = [
+  { id: 'faturamento', label: 'ABC FATURAMENTO',       sub: 'Receita vendida × preço — 30 dias', metricLabel: 'Faturamento 30D', metricFmt: v => fBRL(v), color: '#f5c518' },
+  { id: 'unidades',    label: 'ABC UNIDADES VENDIDAS', sub: 'Quantidade vendida — 30 dias',       metricLabel: 'Unidades 30D',    metricFmt: v => fNum(v), color: '#00b4d8' },
+  { id: 'estoque',     label: 'ABC ESTOQUE',           sub: 'Capital investido saldo × preço',    metricLabel: 'Val. Estoque',    metricFmt: v => fBRL(v), color: '#4ade80' },
+]
+
+export default function SugestoesPage() {
+  const [curva,        setCurva]        = useState('faturamento')
+  const [abcFilter,    setAbcFilter]    = useState('')
+  const [grupoFilter,  setGrupoFilter]  = useState('')
+  const [pedraFilter,  setPedraFilter]  = useState('')
+  const [tag2Filter,   setTag2Filter]   = useState('')
+  const [catFilter,    setCatFilter]    = useState('')
+  const [filialFilter, setFilialFilter] = useState('')
+  const [codigoFilter, setCodigoFilter] = useState('')
+  const [search,       setSearch]       = useState('')
+  const [dbSearch,     setDbSearch]     = useState('')
+  const [dbCodigo,     setDbCodigo]     = useState('')
+  const [page,         setPage]         = useState(0)
+  const [sortK,        setSortK]        = useState('_metric')
+  const [sortD,        setSortD]        = useState('desc')
+
+  useEffect(() => { const t = setTimeout(() => { setDbSearch(search);  setPage(0) }, 400); return () => clearTimeout(t) }, [search])
+  useEffect(() => { const t = setTimeout(() => { setDbCodigo(codigoFilter); setPage(0) }, 400); return () => clearTimeout(t) }, [codigoFilter])
+
+  function changeCurva(id) { setCurva(id); setPage(0); setSortK('_metric'); setSortD('desc') }
+  function changeAbc(v)    { setAbcFilter(v); setPage(0) }
+  function changeSort(k)   { if (sortK === k) setSortD(d => d === 'asc' ? 'desc' : 'asc'); else { setSortK(k); setSortD('desc') }; setPage(0) }
+
+  const optQ = useQuery({ queryKey: ['produtos-options'], queryFn: api.produtosOptions, staleTime: Infinity })
+  const opts = optQ.data || { grupos: [], pedras: [], tag2s: [], categorias: [] }
+
+  const abcQ = useQuery({
+    queryKey:        ['abc', curva, abcFilter, dbSearch, dbCodigo, grupoFilter, pedraFilter, tag2Filter, catFilter, filialFilter, page, sortK, sortD],
+    queryFn:         () => api.abc({ tipo: curva, abc: abcFilter, search: dbSearch, codigo: dbCodigo, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, categoria: catFilter, filial: filialFilter || undefined, page, limit: PAGE_LIMIT, sort: sortK, dir: sortD }),
+    staleTime:       60000,
+    placeholderData: keepPreviousData,
+  })
+
+  const data       = abcQ.data || {}
+  const rows       = data.items    || []
+  const total      = data.total    || 0
+  const totalA     = data.totalA   || 0
+  const totalB     = data.totalB   || 0
+  const totalC     = data.totalC   || 0
+  const totalPages = Math.ceil(total / PAGE_LIMIT)
+  const cDef       = CURVES.find(c => c.id === curva)
+  const hasFilters = grupoFilter || pedraFilter || tag2Filter || catFilter || filialFilter || dbCodigo || dbSearch || abcFilter
+
+  function reset() { setGrupoFilter(''); setPedraFilter(''); setTag2Filter(''); setCatFilter(''); setFilialFilter(''); setCodigoFilter(''); setSearch(''); setAbcFilter(''); setPage(0) }
+
+  return (
+    <div>
+      {abcQ.isFetching && (
+        <div style={{ position: 'absolute', top: 12, right: 24, zIndex: 20 }}>
+          <span className="text-xs" style={{ color: '#f5c518' }}>↻ atualizando…</span>
+        </div>
+      )}
+
+      <div className="page-body space-y-4" style={{ paddingTop: 16 }}>
+
+        {/* Cards das 3 curvas */}
+        <div className="grid grid-cols-3 gap-4">
+          {CURVES.map(c => {
+            const isActive = curva === c.id
+            return (
+              <button key={c.id} onClick={() => changeCurva(c.id)} style={{
+                textAlign: 'left', background: '#1a1c2a', cursor: 'pointer',
+                border: `2px solid ${isActive ? c.color : '#22253a'}`,
+                borderRadius: 10, padding: '16px 20px', transition: 'border-color 0.15s',
+              }}>
+                <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.05em', marginBottom: 4, color: isActive ? c.color : '#e8eaf0' }}>
+                  {c.label}
+                </div>
+                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>{c.sub}</div>
+                {isActive
+                  ? <div style={{ display: 'flex', gap: 8 }}>
+                      <AbcChip label="A" count={totalA} active={abcFilter === 'A'} onClick={e => { e.stopPropagation(); changeAbc(abcFilter === 'A' ? '' : 'A') }} />
+                      <AbcChip label="B" count={totalB} active={abcFilter === 'B'} onClick={e => { e.stopPropagation(); changeAbc(abcFilter === 'B' ? '' : 'B') }} />
+                      <AbcChip label="C" count={totalC} active={abcFilter === 'C'} onClick={e => { e.stopPropagation(); changeAbc(abcFilter === 'C' ? '' : 'C') }} />
+                    </div>
+                  : <div style={{ display: 'flex', gap: 8 }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 4, background: '#14532d', color: '#4ade80', fontSize: 11, fontWeight: 700 }}>A</span>
+                      <span style={{ padding: '2px 8px', borderRadius: 4, background: '#7c2d12', color: '#fb923c', fontSize: 11, fontWeight: 700 }}>B</span>
+                      <span style={{ padding: '2px 8px', borderRadius: 4, background: '#7f1d1d', color: '#f87171', fontSize: 11, fontWeight: 700 }}>C</span>
+                    </div>
+                }
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Filtros */}
+        <div className="card">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Grupo</div>
+              <select value={grupoFilter} onChange={e => { setGrupoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
+                <option value="">Todos</option>
+                {opts.grupos.map(g => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Tipo de Pedra</div>
+              <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 160 }}>
+                <option value="">Todas</option>
+                {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>TAG 2</div>
+              <select value={tag2Filter} onChange={e => { setTag2Filter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 120 }}>
+                <option value="">Todas</option>
+                {opts.tag2s.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Categoria</div>
+              <select value={catFilter} onChange={e => { setCatFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 140 }}>
+                <option value="">Todas</option>
+                {opts.categorias.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <FilialSelector value={filialFilter} onChange={v => { setFilialFilter(v); setPage(0) }} />
+            <div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Código</div>
+              <input value={codigoFilter} onChange={e => setCodigoFilter(e.target.value)} placeholder="ex: 215894" className="inp text-xs" style={{ width: 120 }} />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Descrição</div>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar…" className="inp text-xs" style={{ width: 170 }} />
+            </div>
+            {hasFilters && <button onClick={reset} className="btn-ghost text-xs self-end">✕ Limpar</button>}
+          </div>
+        </div>
+
+        {/* Tabela */}
+        <div className="card">
+          {abcQ.isLoading
+            ? <div className="state-box"><div className="spinner" /><p>Calculando {cDef.label}…</p></div>
+            : (
+              <div style={{ opacity: abcQ.isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-bold uppercase tracking-widest" style={{ color: cDef.color }}>▌ {cDef.label}</p>
+                  <p className="text-xs" style={{ color: '#4b5063' }}>{total.toLocaleString('pt-BR')} produtos</p>
+                </div>
+
+                <div className="tbl-scroll">
+                  <table className="tbl" style={{ tableLayout: 'fixed', width: '100%' }}>
+                    <colgroup>
+                      <col style={{ width: 44 }} />
+                      <col style={{ width: 48 }} />
+                      <col style={{ width: 135 }} />
+                      <col style={{ width: 250 }} />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 60 }} />
+                      <col style={{ width: 80 }} />
+                      <col style={{ width: 120 }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={{ color: '#6b7280' }}>#</th>
+                        <th style={{ color: '#6b7280' }}>Foto</th>
+                        <TH k="produto"    label="Código"           sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="descricao"  label="Descrição"        sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="grupo"      label="Grupo"            sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="tag2"       label="TAG 2"            sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="_abc"       label="ABC"              sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="_saldo"     label="Saldo"            sortK={sortK} sortD={sortD} onSort={changeSort} align="right" />
+                        <TH k="_metric"    label={cDef.metricLabel} sortK={sortK} sortD={sortD} onSort={changeSort} align="right" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.length === 0 && !abcQ.isFetching && (
+                        <tr><td colSpan={9}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
+                      )}
+                      {rows.map((row, i) => (
+                        <tr key={i}>
+                          <td style={{ color: '#4b5063', fontFamily: 'monospace', fontSize: 12 }}>{page * PAGE_LIMIT + i + 1}</td>
+                          <td><FotoZoom url={row._foto} alt={row.descricao} /></td>
+                          <td>
+                            <div style={{ color: '#f5c518', fontFamily: 'monospace', fontSize: 11 }}>{row.produtoBase}</div>
+                            <div style={{ color: '#4b5063', fontSize: 10 }}>{row.produto}</div>
+                          </td>
+                          <td>
+                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', color: '#e8eaf0', fontSize: 12 }} title={row.descricao}>
+                              {row.descricao ?? '-'}
+                            </span>
+                          </td>
+                          <td style={{ color: '#00b4d8', fontSize: 12 }}>{row.grupo ?? '-'}</td>
+                          <td style={{ color: '#6b7280', fontSize: 12 }}>{row.tag2 ?? '-'}</td>
+                          <td><BadgeABC value={row._abc} /></td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fNum(row._saldo)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 700, color: cDef.color }}>{cDef.metricFmt(row._metric)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Paginação */}
+                <div className="flex items-center justify-between px-1 mt-3">
+                  <p className="text-xs" style={{ color: '#4b5063' }}>
+                    {total > 0
+                      ? `${(page * PAGE_LIMIT + 1).toLocaleString('pt-BR')}–${Math.min((page + 1) * PAGE_LIMIT, total).toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')}`
+                      : '0 produtos'}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                      className="px-3 py-1 rounded text-xs font-semibold"
+                      style={{ background: '#1e2035', color: page === 0 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+                      ← Anterior
+                    </button>
+                    <span className="text-xs" style={{ color: '#6b7280' }}>{page + 1} / {totalPages || 1}</span>
+                    <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+                      className="px-3 py-1 rounded text-xs font-semibold"
+                      style={{ background: '#1e2035', color: page >= totalPages - 1 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+                      Próximo →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TH({ k, label, sortK, sortD, onSort, align = 'left' }) {
+  const active = sortK === k
+  return (
+    <th onClick={() => onSort(k)} style={{ textAlign: align, cursor: 'pointer', userSelect: 'none' }}>
+      <span style={{ color: active ? '#f5c518' : '#6b7280' }}>
+        {label}{active ? (sortD === 'asc' ? ' ▲' : ' ▼') : ''}
+      </span>
+    </th>
+  )
+}
+
+function AbcChip({ label, count, active, onClick }) {
+  const colors = { A: { bg: '#14532d', fg: '#4ade80' }, B: { bg: '#7c2d12', fg: '#fb923c' }, C: { bg: '#7f1d1d', fg: '#f87171' } }
+  const { bg, fg } = colors[label]
+  return (
+    <button onClick={onClick} style={{
+      padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700,
+      background: active ? fg : bg, color: active ? '#0d0e16' : fg,
+      border: `1px solid ${active ? fg : 'transparent'}`,
+      cursor: 'pointer', transition: 'all 0.1s',
+    }}>
+      {label} {count.toLocaleString('pt-BR')}
+    </button>
+  )
+}
+
+function FotoZoom({ url, alt }) {
+  const [visible, setVisible] = useState(!!url)
+  const [pos,     setPos]     = useState(null)
+
+  if (!url || !visible) return (
+    <div style={{ width: 36, height: 36, background: '#20223a', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a3f5c' }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+      </svg>
+    </div>
+  )
+  return (
+    <div className="foto-zoom-container"
+      onMouseEnter={e => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setPos(null)}
+    >
+      <img src={url} alt={alt} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, background: '#20223a', display: 'block' }}
+        onError={() => setVisible(false)} />
+      {pos && (
+        <div className="foto-zoom-popup" style={{ left: pos.x + 16, top: Math.min(pos.y - 110, window.innerHeight - 230) }}>
+          <img src={url} alt={alt} style={{ width: 200, height: 200, objectFit: 'contain', display: 'block', borderRadius: 6 }} />
+        </div>
+      )}
+    </div>
+  )
+}

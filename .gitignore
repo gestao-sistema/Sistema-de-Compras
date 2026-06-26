@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.claude/
+backend/cache_compras.json
+debug-profiles.mjs
+setup-usuarios.mjs
+shots.js
+shots.mjs
+*.local
