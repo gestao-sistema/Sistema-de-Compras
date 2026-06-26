@@ -1153,4 +1153,11 @@ app.post('/api/admin/criar-usuario', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Serve o frontend em produção
+const distPath = require('path').join(__dirname, '..', 'dist')
+if (require('fs').existsSync(distPath)) {
+  app.use(express.static(distPath))
+  app.get('*', (req, res) => res.sendFile(require('path').join(distPath, 'index.html')))
+}
+
 app.listen(PORT, () => console.log(`✓  API em http://localhost:${PORT}`))
