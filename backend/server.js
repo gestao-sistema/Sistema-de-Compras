@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') })
+try { require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') }) } catch (_) {}
 const express = require('express')
 const cors    = require('cors')
 const axios   = require('axios')
