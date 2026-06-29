@@ -17,7 +17,7 @@ export default function SugestoesPage() {
   const [abcFilter,    setAbcFilter]    = useState('')
   const [grupoFilter,  setGrupoFilter]  = useState('')
   const [pedraFilter,  setPedraFilter]  = useState('')
-  const [tag2Filter,   setTag2Filter]   = useState('')
+  const [fornFilter,   setFornFilter]   = useState('')
   const [catFilter,    setCatFilter]    = useState('')
   const [filialFilter, setFilialFilter] = useState('')
   const [codigoFilter, setCodigoFilter] = useState('')
@@ -36,11 +36,11 @@ export default function SugestoesPage() {
   function changeSort(k)   { if (sortK === k) setSortD(d => d === 'asc' ? 'desc' : 'asc'); else { setSortK(k); setSortD('desc') }; setPage(0) }
 
   const optQ = useQuery({ queryKey: ['produtos-options'], queryFn: api.produtosOptions, staleTime: Infinity })
-  const opts = optQ.data || { grupos: [], pedras: [], tag2s: [], categorias: [] }
+  const opts = optQ.data || { grupos: [], pedras: [], categorias: [], fornecedores: [] }
 
   const abcQ = useQuery({
-    queryKey:        ['abc', curva, abcFilter, dbSearch, dbCodigo, grupoFilter, pedraFilter, tag2Filter, catFilter, filialFilter, page, sortK, sortD],
-    queryFn:         () => api.abc({ tipo: curva, abc: abcFilter, search: dbSearch, codigo: dbCodigo, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, categoria: catFilter, filial: filialFilter || undefined, page, limit: PAGE_LIMIT, sort: sortK, dir: sortD }),
+    queryKey:        ['abc', curva, abcFilter, dbSearch, dbCodigo, grupoFilter, pedraFilter, fornFilter, catFilter, filialFilter, page, sortK, sortD],
+    queryFn:         () => api.abc({ tipo: curva, abc: abcFilter, search: dbSearch, codigo: dbCodigo, grupo: grupoFilter, pedra: pedraFilter, fornecedor: fornFilter, categoria: catFilter, filial: filialFilter || undefined, page, limit: PAGE_LIMIT, sort: sortK, dir: sortD }),
     staleTime:       60000,
     placeholderData: keepPreviousData,
   })
@@ -53,9 +53,9 @@ export default function SugestoesPage() {
   const totalC     = data.totalC   || 0
   const totalPages = Math.ceil(total / PAGE_LIMIT)
   const cDef       = CURVES.find(c => c.id === curva)
-  const hasFilters = grupoFilter || pedraFilter || tag2Filter || catFilter || filialFilter || dbCodigo || dbSearch || abcFilter
+  const hasFilters = grupoFilter || pedraFilter || fornFilter || catFilter || filialFilter || dbCodigo || dbSearch || abcFilter
 
-  function reset() { setGrupoFilter(''); setPedraFilter(''); setTag2Filter(''); setCatFilter(''); setFilialFilter(''); setCodigoFilter(''); setSearch(''); setAbcFilter(''); setPage(0) }
+  function reset() { setGrupoFilter(''); setPedraFilter(''); setFornFilter(''); setCatFilter(''); setFilialFilter(''); setCodigoFilter(''); setSearch(''); setAbcFilter(''); setPage(0) }
 
   return (
     <div>
@@ -116,10 +116,10 @@ export default function SugestoesPage() {
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>TAG 2</div>
-              <select value={tag2Filter} onChange={e => { setTag2Filter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 120 }}>
-                <option value="">Todas</option>
-                {opts.tag2s.map(t => <option key={t} value={t}>{t}</option>)}
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Fornecedor</div>
+              <select value={fornFilter} onChange={e => { setFornFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 180 }}>
+                <option value="">Todos</option>
+                {opts.fornecedores.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
             <div>
@@ -158,30 +158,32 @@ export default function SugestoesPage() {
                     <colgroup>
                       <col style={{ width: 44 }} />
                       <col style={{ width: 48 }} />
-                      <col style={{ width: 135 }} />
-                      <col style={{ width: 250 }} />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 60 }} />
-                      <col style={{ width: 80 }} />
                       <col style={{ width: 120 }} />
+                      <col style={{ width: 220 }} />
+                      <col style={{ width: 80 }} />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: 55 }} />
+                      <col style={{ width: 70 }} />
+                      <col style={{ width: 70 }} />
+                      <col style={{ width: 110 }} />
                     </colgroup>
                     <thead>
                       <tr>
                         <th style={{ color: '#6b7280' }}>#</th>
                         <th style={{ color: '#6b7280' }}>Foto</th>
-                        <TH k="produto"    label="Código"           sortK={sortK} sortD={sortD} onSort={changeSort} />
-                        <TH k="descricao"  label="Descrição"        sortK={sortK} sortD={sortD} onSort={changeSort} />
-                        <TH k="grupo"      label="Grupo"            sortK={sortK} sortD={sortD} onSort={changeSort} />
-                        <TH k="tag2"       label="TAG 2"            sortK={sortK} sortD={sortD} onSort={changeSort} />
-                        <TH k="_abc"       label="ABC"              sortK={sortK} sortD={sortD} onSort={changeSort} />
-                        <TH k="_saldo"     label="Saldo"            sortK={sortK} sortD={sortD} onSort={changeSort} align="right" />
-                        <TH k="_metric"    label={cDef.metricLabel} sortK={sortK} sortD={sortD} onSort={changeSort} align="right" />
+                        <TH k="produto"         label="Código"           sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="descricao"       label="Descrição"        sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="grupo"           label="Grupo"            sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="nomeFornecedor"  label="Fornecedor"       sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="_abc"            label="ABC"              sortK={sortK} sortD={sortD} onSort={changeSort} />
+                        <TH k="_saldo"          label="Saldo"            sortK={sortK} sortD={sortD} onSort={changeSort} align="right" />
+                        <TH k="_saldoDisp"      label="Disponível"       sortK={sortK} sortD={sortD} onSort={changeSort} align="right" />
+                        <TH k="_metric"         label={cDef.metricLabel} sortK={sortK} sortD={sortD} onSort={changeSort} align="right" />
                       </tr>
                     </thead>
                     <tbody>
                       {rows.length === 0 && !abcQ.isFetching && (
-                        <tr><td colSpan={9}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
+                        <tr><td colSpan={10}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
                       )}
                       {rows.map((row, i) => (
                         <tr key={i}>
@@ -197,9 +199,10 @@ export default function SugestoesPage() {
                             </span>
                           </td>
                           <td style={{ color: '#00b4d8', fontSize: 12 }}>{row.grupo ?? '-'}</td>
-                          <td style={{ color: '#6b7280', fontSize: 12 }}>{row.tag2 ?? '-'}</td>
+                          <td style={{ fontSize: 11, color: '#a78bfa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.nomeFornecedor}>{row.nomeFornecedor || '-'}</td>
                           <td><BadgeABC value={row._abc} /></td>
                           <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fNum(row._saldo)}</td>
+                          <td style={{ textAlign: 'right', fontFamily: 'monospace', color: (row._saldoDisp ?? 0) > 0 ? '#4ade80' : '#f87171' }}>{fNum(row._saldoDisp ?? 0)}</td>
                           <td style={{ textAlign: 'right', fontWeight: 700, color: cDef.color }}>{cDef.metricFmt(row._metric)}</td>
                         </tr>
                       ))}

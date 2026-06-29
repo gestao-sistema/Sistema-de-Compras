@@ -689,11 +689,12 @@ app.get('/api/compras', async (req, res) => {
 app.get('/api/produtos/options', async (req, res) => {
   try {
     const all    = await getProdutos()
-    const grupos     = [...new Set(all.map(i => i.grupo).filter(Boolean))].sort()
-    const pedras     = [...new Set(all.map(i => i.pedra).filter(Boolean))].sort()
-    const tag2s      = [...new Set(all.map(i => i.tag2).filter(Boolean))].sort()
-    const categorias = [...new Set(all.map(i => i.categoria).filter(Boolean))].sort()
-    res.json({ grupos, pedras, tag2s, categorias })
+    const grupos      = [...new Set(all.map(i => i.grupo).filter(Boolean))].sort()
+    const pedras      = [...new Set(all.map(i => i.pedra).filter(Boolean))].sort()
+    const tag2s       = [...new Set(all.map(i => i.tag2).filter(Boolean))].sort()
+    const categorias  = [...new Set(all.map(i => i.categoria).filter(Boolean))].sort()
+    const fornecedores= [...new Set(all.map(i => i.nomeFornecedor).filter(Boolean))].sort()
+    res.json({ grupos, pedras, tag2s, categorias, fornecedores })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -895,6 +896,7 @@ app.get('/api/abc', async (req, res) => {
       tipo  = 'faturamento',
       abc:  abcF = '',
       grupo: gf  = '', pedra: pf = '', tag2: tf = '', categoria: catf = '', codigo: cf = '', search: sq = '',
+      fornecedor: ff = '',
       page  = '0', limit = '100',
       sort  = '_metric', dir = 'desc',
       filial: fil = '',
@@ -905,10 +907,11 @@ app.get('/api/abc', async (req, res) => {
     const q = sq.trim().toLowerCase()
     if (q)     items = items.filter(i => i.descricao?.toLowerCase().includes(q))
     if (cf)    items = items.filter(i => (i.produto || '').toLowerCase().includes(cf.toLowerCase()) || (i.produtoBase || '').toLowerCase().includes(cf.toLowerCase()))
-    if (gf)    items = items.filter(i => (i.grupo     || '').toLowerCase() === gf.toLowerCase())
-    if (pf)    items = items.filter(i => (i.pedra     || '').toLowerCase() === pf.toLowerCase())
-    if (tf)    items = items.filter(i => (i.tag2      || '').toLowerCase() === tf.toLowerCase())
-    if (catf)  items = items.filter(i => (i.categoria || '').toLowerCase() === catf.toLowerCase())
+    if (gf)    items = items.filter(i => (i.grupo          || '').toLowerCase() === gf.toLowerCase())
+    if (pf)    items = items.filter(i => (i.pedra          || '').toLowerCase() === pf.toLowerCase())
+    if (tf)    items = items.filter(i => (i.tag2           || '').toLowerCase() === tf.toLowerCase())
+    if (catf)  items = items.filter(i => (i.categoria      || '').toLowerCase() === catf.toLowerCase())
+    if (ff)    items = items.filter(i => (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase())
 
     // ── métrica por tipo ──
     const metricFn = tipo === 'faturamento' ? i => (i._vend30 || 0) * (i._precoMedio || 0)
