@@ -3,6 +3,8 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import TourModal, { TOUR_KEY } from './TourModal'
+import FloatingActions from './FloatingActions'
 
 const NAV = [
   { to: '/',            label: 'Dashboard',    end: true,  Icon: IconGrid,      chave: 'dashboard' },
@@ -19,6 +21,7 @@ export default function Layout() {
   const navigate         = useNavigate()
   const prevRefreshed    = useRef(null)
   const [justUpdated, setJustUpdated] = useState(false)
+  const [showTour,    setShowTour]    = useState(() => !localStorage.getItem(TOUR_KEY))
   const { profile, podeVer, logout: supaLogout } = useAuth()
 
   async function logout() {
@@ -60,7 +63,7 @@ export default function Layout() {
     <div>
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 22, fontWeight: 400, letterSpacing: '0.12em', color: '#ffffff', marginBottom: 4 }}>Alinare</div>
+          <div style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 22, fontWeight: 400, letterSpacing: '0.12em', color: 'var(--text)', marginBottom: 4 }}>Alinare</div>
           <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.22em', color: '#f5c518' }}>COMPRAS</div>
         </div>
 
@@ -86,7 +89,7 @@ export default function Layout() {
 
         <div className="mt-auto px-4 pb-6">
           {/* Indicador de atualização automática */}
-          <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: '#12131e', border: '1px solid #22253a' }}>
+          <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)' }}>
             {justUpdated ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: '#4ade80', fontSize: 14 }}>✓</span>
@@ -94,27 +97,27 @@ export default function Layout() {
               </div>
             ) : isRefreshing ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f5c518', animation: 'pulse 1s infinite' }} />
-                <span style={{ color: '#f5c518', fontSize: 11 }}>Atualizando base…</span>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1s infinite' }} />
+                <span style={{ color: 'var(--accent)', fontSize: 11 }}>Atualizando base…</span>
               </div>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ade80' }} />
-                <span style={{ color: '#6b7280', fontSize: 11 }}>Sincronização ativa</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Sincronização ativa</span>
               </div>
             )}
             {statusQ.data?.lastRefreshed && (
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #22253a' }}>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7b8199', marginBottom: 3 }}>
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-nav)', marginBottom: 3 }}>
                   Última atualização
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 10, color: '#4ade80' }}>🕐</span>
-                  <span style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.05em', color: '#f5c518', fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.05em', color: 'var(--accent)', fontFamily: 'monospace' }}>
                     {new Date(statusQ.data.lastRefreshed).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </div>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#8b90a7', marginTop: 2 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-nav)', marginTop: 2 }}>
                   {new Date(statusQ.data.lastRefreshed).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </div>
               </div>
@@ -128,9 +131,16 @@ export default function Layout() {
             ↺ Atualizar tela
           </button>
           <button
+            onClick={() => setShowTour(true)}
+            className="btn-ghost w-full text-center text-xs"
+            style={{ marginTop: 6, color: '#818cf8' }}
+          >
+            ? Tour do sistema
+          </button>
+          <button
             onClick={logout}
             className="btn-ghost w-full text-center text-xs"
-            style={{ marginTop: 6, color: '#6b7280' }}
+            style={{ marginTop: 6, color: 'var(--text-muted)' }}
           >
             ⏻ Sair
           </button>
@@ -140,6 +150,9 @@ export default function Layout() {
       <div className="main-content">
         <Outlet />
       </div>
+
+      <FloatingActions />
+      {showTour && <TourModal onClose={() => { setShowTour(false); localStorage.setItem(TOUR_KEY, '1') }} />}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import ExportCompras from '../components/ExportCompras'
@@ -42,7 +42,7 @@ export default function ComprasPage() {
   }
 
   function SortArrow({ col }) {
-    if (activeSortCol !== col) return <span style={{ color: '#3a3f5c', marginLeft: 3 }}>⇅</span>
+    if (activeSortCol !== col) return <span style={{ color: 'var(--text-dim)', marginLeft: 3 }}>⇅</span>
     return <span style={{ color: '#f5c518', marginLeft: 3 }}>{activeSortDir === 'asc' ? '↑' : '↓'}</span>
   }
 
@@ -143,7 +143,7 @@ export default function ComprasPage() {
         </div>
       )}
 
-      <div className="page-body space-y-4" style={{ paddingTop: 16 }}>
+      <div className="page-body space-y-4">
 
         {/* Cards de resumo */}
         <div className="grid grid-cols-4 gap-4">
@@ -170,13 +170,13 @@ export default function ComprasPage() {
           {/* Card total geral */}
           <div className="card flex flex-col justify-between" style={{ border: '2px solid #f5c51840' }}>
             <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: '#f5c518' }}>TOTAL GERAL</div>
-            <div className="text-xs mb-3" style={{ color: '#6b7280' }}>Ruptura + Risco combinados</div>
+            <div className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Ruptura + Risco combinados</div>
             <div style={{ fontSize: 28, fontWeight: 900, color: '#f5c518', lineHeight: 1 }}>
               {totais.total.count.toLocaleString('pt-BR')}
             </div>
-            <div className="text-xs mt-1" style={{ color: '#6b7280' }}>produtos</div>
-            <div style={{ marginTop: 10, padding: '8px 0', borderTop: '1px solid #22253a' }}>
-              <div className="text-xs mb-1" style={{ color: '#6b7280' }}>Val. reposição estimado</div>
+            <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>produtos</div>
+            <div style={{ marginTop: 10, padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+              <div className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Val. reposição estimado</div>
               <div style={{ fontSize: 16, fontWeight: 800, color: '#a3e635' }}>
                 {totaisQ.isLoading ? '—' : fBRL(totais.total.valor)}
               </div>
@@ -184,17 +184,17 @@ export default function ComprasPage() {
           </div>
           {/* Cobertura */}
           <div className="card flex flex-col justify-between" style={{ borderColor: '#22253a' }}>
-            <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#6b7280' }}>Cobertura desejada</div>
+            <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>Cobertura desejada</div>
             <div className="flex gap-2">
               {[30, 45, 60, 90].map(d => (
                 <button key={d} onClick={() => setCobertura(d)}
                   className="flex-1 py-2 rounded text-xs font-bold transition-all"
-                  style={cobertura === d ? { background: '#f5c518', color: '#0d0e16' } : { background: '#20223a', color: '#8b90a7', border: '1px solid #2a2d40' }}>
+                  style={cobertura === d ? { background: '#f5c518', color: '#0d0e16' } : { background: 'var(--bg-input)', color: 'var(--text-nav)', border: '1px solid var(--border2)' }}>
                   {d}d
                 </button>
               ))}
             </div>
-            <div className="text-xs mt-3" style={{ color: '#4b5063' }}>
+            <div className="text-xs mt-3" style={{ color: 'var(--text-dim)' }}>
               Qtd = venda/dia × {cobertura}d − saldo − solicitado
             </div>
           </div>
@@ -204,21 +204,21 @@ export default function ComprasPage() {
         <div className="card">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Grupo</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Grupo</div>
               <select value={grupoFilter} onChange={e => { setGrupoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
                 <option value="">Todos</option>
                 {opts.grupos.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Tipo de Pedra</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo de Pedra</div>
               <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 150 }}>
                 <option value="">Todas</option>
                 {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>TAG 2</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>TAG 2</div>
               <select value={tag2Filter} onChange={e => { setTag2Filter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 120 }}>
                 <option value="">Todas</option>
                 {opts.tag2s.map(t => <option key={t} value={t}>{t}</option>)}
@@ -226,11 +226,11 @@ export default function ComprasPage() {
             </div>
             <FilialSelector value={filialFilter} onChange={v => { setFilialFilter(v); setPage(0) }} />
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Código Filho</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Código Filho</div>
               <input value={codigoFilter} onChange={e => setCodigoFilter(e.target.value)} placeholder="ex: 506300001" className="inp text-xs" style={{ width: 130 }} />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Descrição</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Descrição</div>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar…" className="inp text-xs" style={{ width: 170 }} />
             </div>
             {hasFilters && <button onClick={reset} className="btn-ghost text-xs self-end">✕ Limpar</button>}
@@ -256,7 +256,7 @@ export default function ComprasPage() {
                       dbSearch={dbSearch}
                       cobertura={cobertura}
                     />
-                    <p className="text-xs" style={{ color: '#4b5063' }}>{total.toLocaleString('pt-BR')} produtos</p>
+                    <p className="text-xs" style={{ color: 'var(--text-dim)' }}>{total.toLocaleString('pt-BR')} produtos</p>
                   </div>
                 </div>
 
@@ -280,16 +280,16 @@ export default function ComprasPage() {
                     </colgroup>
                     <thead>
                       <tr>
-                        <th style={{ color: '#6b7280' }}>Foto</th>
-                        <th style={{ color: '#6b7280', cursor: 'pointer' }} onClick={() => toggleSort('produto')}>Código<SortArrow col="produto" /></th>
-                        <th style={{ color: '#6b7280', cursor: 'pointer' }} onClick={() => toggleSort('descricao')}>Descrição<SortArrow col="descricao" /></th>
-                        <th style={{ color: '#6b7280', cursor: 'pointer' }} onClick={() => toggleSort('grupo')}>Grupo<SortArrow col="grupo" /></th>
-                        <th style={{ color: '#6b7280', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_saldo')}>Saldo<SortArrow col="_saldo" /></th>
-                        <th style={{ color: '#6b7280', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp')}>Disp.<SortArrow col="_saldoDisp" /></th>
-                        <th style={{ color: '#6b7280', textAlign: 'center', fontSize: 10, cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp01')}>Alm. 1<SortArrow col="_saldoDisp01" /></th>
-                        <th style={{ color: '#6b7280', textAlign: 'center', fontSize: 10, cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp04')}>Alm. 4<SortArrow col="_saldoDisp04" /></th>
-                        <th style={{ color: '#6b7280', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_vend30')}>Vend. 30D<SortArrow col="_vend30" /></th>
-                        <th style={{ color: '#6b7280', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_dde')}>DDE<SortArrow col="_dde" /></th>
+                        <th style={{ color: 'var(--text-muted)' }}>Foto</th>
+                        <th style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => toggleSort('produto')}>Código<SortArrow col="produto" /></th>
+                        <th style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => toggleSort('descricao')}>Descrição<SortArrow col="descricao" /></th>
+                        <th style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => toggleSort('grupo')}>Grupo<SortArrow col="grupo" /></th>
+                        <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_saldo')}>Saldo<SortArrow col="_saldo" /></th>
+                        <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp')}>Disp.<SortArrow col="_saldoDisp" /></th>
+                        <th style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: 10, cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp01')}>Alm. 1<SortArrow col="_saldoDisp01" /></th>
+                        <th style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: 10, cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp04')}>Alm. 4<SortArrow col="_saldoDisp04" /></th>
+                        <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_vend30')}>Vend. 30D<SortArrow col="_vend30" /></th>
+                        <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_dde')}>DDE<SortArrow col="_dde" /></th>
                         <th style={{ color: '#818cf8', textAlign: 'center', cursor: pedidosQ.isLoading ? 'wait' : 'pointer' }}
                           onClick={() => !pedidosQ.isLoading && toggleSort('solicitado')}>
                           Solicitado{pedidosQ.isLoading ? <span style={{ fontSize: 9, marginLeft: 4, color: '#f5c518' }}>⏳</span> : <SortArrow col="solicitado" />}
@@ -316,11 +316,11 @@ export default function ComprasPage() {
                             <td><FotoZoom url={row._foto} alt={row.descricao} /></td>
                             <td>
                               <div style={{ color: '#f5c518', fontFamily: 'monospace', fontSize: 11 }}>{row.produtoBase}</div>
-                              <div style={{ color: '#4b5063', fontSize: 10 }}>{row.produto}</div>
+                              <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>{row.produto}</div>
                             </td>
                             <td>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', color: '#e8eaf0', fontSize: 12 }} title={row.descricao}>
+                                <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text)', fontSize: 12 }} title={row.descricao}>
                                   {row.descricao ?? '-'}
                                 </span>
                                 <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, flexShrink: 0,
@@ -329,7 +329,7 @@ export default function ComprasPage() {
                                   {urgencia === 'ruptura' ? 'RUPTURA' : 'RISCO'}
                                 </span>
                               </div>
-                              <div style={{ color: '#4b5063', fontSize: 11, marginTop: 2 }}>{row.pedra || ''}{row.tag2 ? ` · ${row.tag2}` : ''}</div>
+                              <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 2 }}>{row.pedra || ''}{row.tag2 ? ` · ${row.tag2}` : ''}</div>
                             </td>
                             <td style={{ color: '#00b4d8', fontSize: 12 }}>{row.grupo ?? '-'}</td>
                             <td style={{ textAlign: 'center', fontFamily: 'monospace', color: row._saldo === 0 ? '#f87171' : '#e8eaf0', fontWeight: row._saldo === 0 ? 700 : 400 }}>
@@ -344,21 +344,21 @@ export default function ComprasPage() {
                                 ? <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 11, fontWeight: 700, background: dde === 0 ? '#7f1d1d' : dde < 15 ? '#7f1d1d' : '#7c2d12', color: dde === 0 ? '#f87171' : dde < 15 ? '#f87171' : '#fb923c' }}>
                                     {dde === 0 ? 'ZERO' : `${dde}D`}
                                   </span>
-                                : <span style={{ color: '#4b5063' }}>—</span>}
+                                : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                             </td>
                             <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 13 }}>
                               {pedidosQ.isLoading
-                                ? <span style={{ color: '#3a3f5c' }}>…</span>
+                                ? <span style={{ color: 'var(--text-dim)' }}>…</span>
                                 : solicitado > 0
                                   ? <span style={{ color: '#818cf8', fontWeight: 700 }}>{fNum(solicitado)}</span>
-                                  : <span style={{ color: '#3a3f5c' }}>—</span>}
+                                  : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                             </td>
                             <td style={{ textAlign: 'center', fontSize: 10, color: '#818cf8', lineHeight: 1.4 }}>
                               {pedidosQ.isLoading
-                                ? <span style={{ color: '#3a3f5c' }}>…</span>
+                                ? <span style={{ color: 'var(--text-dim)' }}>…</span>
                                 : datasPedido.length > 0
                                   ? datasPedido.join(' / ')
-                                  : <span style={{ color: '#3a3f5c' }}>—</span>}
+                                  : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                             </td>
                             <td style={{ textAlign: 'center' }}>
                               {qtdSug > 0
@@ -377,7 +377,7 @@ export default function ComprasPage() {
 
                 {/* Paginação */}
                 <div className="flex items-center justify-between px-1 mt-3">
-                  <p className="text-xs" style={{ color: '#4b5063' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-dim)' }}>
                     {total > 0
                       ? `${(page * PAGE_LIMIT + 1).toLocaleString('pt-BR')}–${Math.min((page + 1) * PAGE_LIMIT, total).toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')}`
                       : '0 produtos'}
@@ -385,13 +385,13 @@ export default function ComprasPage() {
                   <div className="flex items-center gap-2">
                     <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
                       className="px-3 py-1 rounded text-xs font-semibold"
-                      style={{ background: '#1e2035', color: page === 0 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+                      style={{ background: 'var(--bg-input)', color: page === 0 ? 'var(--text-dim)' : 'var(--text)', border: '1px solid var(--border2)' }}>
                       ← Anterior
                     </button>
-                    <span className="text-xs" style={{ color: '#6b7280' }}>{page + 1} / {totalPages || 1}</span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{page + 1} / {totalPages || 1}</span>
                     <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
                       className="px-3 py-1 rounded text-xs font-semibold"
-                      style={{ background: '#1e2035', color: page >= totalPages - 1 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+                      style={{ background: 'var(--bg-input)', color: page >= totalPages - 1 ? 'var(--text-dim)' : 'var(--text)', border: '1px solid var(--border2)' }}>
                       Próximo →
                     </button>
                   </div>
@@ -408,18 +408,18 @@ export default function ComprasPage() {
 function SummaryCard({ label, sub, count, valor, color, active, onClick, loading }) {
   return (
     <button onClick={onClick} style={{
-      textAlign: 'left', background: '#1a1c2a', cursor: 'pointer', width: '100%',
+      textAlign: 'left', background: 'var(--bg-card)', cursor: 'pointer', width: '100%',
       border: `2px solid ${active ? color : '#22253a'}`,
       borderRadius: 10, padding: '16px 20px', transition: 'border-color 0.15s',
     }}>
       <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.05em', color: active ? color : '#e8eaf0', marginBottom: 4 }}>
         {label}
       </div>
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 10 }}>{sub}</div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>{sub}</div>
       <div style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1 }}>{count.toLocaleString('pt-BR')}</div>
-      <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4, marginBottom: 10 }}>produtos</div>
-      <div style={{ borderTop: '1px solid #22253a', paddingTop: 8 }}>
-        <div style={{ fontSize: 10, color: '#6b7280', marginBottom: 3 }}>Val. reposição estimado</div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 10 }}>produtos</div>
+      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Val. reposição estimado</div>
         <div style={{ fontSize: 15, fontWeight: 800, color: '#a3e635' }}>
           {loading ? '—' : fBRL(valor)}
         </div>

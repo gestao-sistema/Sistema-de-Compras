@@ -8,9 +8,12 @@ import App from './App'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
+      staleTime:      60_000,
       refetchInterval: 60_000,
-      retry: 1,
+      retry:           3,          // tenta 3x em caso de erro
+      retryDelay:      attempt => Math.min(1000 * 2 ** attempt, 10_000), // backoff: 2s, 4s, 8s
+      refetchOnWindowFocus: true,  // recarrega ao voltar para a aba
+      refetchOnReconnect:   true,  // recarrega ao recuperar conexão
     },
   },
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, toRows, fDate } from '../api/client'
 import DataTable from '../components/DataTable'
@@ -64,7 +64,7 @@ export default function AssistenciasPage() {
         <div className="card mb-4">
           <form onSubmit={handleSearch} className="flex gap-3 items-end">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{ color: '#6b7280' }}>
+              <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{ color: 'var(--text-muted)' }}>
                 CPF / CNPJ do cliente
               </label>
               <input
@@ -88,10 +88,10 @@ export default function AssistenciasPage() {
         {rows.length > 0 && (
           <div className="card mb-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6b7280' }}>
+              <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                 {rows.length} ordens de serviço encontradas
               </h2>
-              <p className="text-xs" style={{ color: '#4b5063' }}>Clique em uma linha para ver os itens</p>
+              <p className="text-xs" style={{ color: 'var(--text-dim)' }}>Clique em uma linha para ver os itens</p>
             </div>
             <DataTable
               columns={COLS}

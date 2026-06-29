@@ -200,8 +200,9 @@ function buildRow(pai, v) {
   const saldo04  = n(item.estoque_atual_04)
   const saldoD01 = n(item.estoque_disponivel_01)
   const saldoD04 = n(item.estoque_disponivel_04)
-  const saldo    = saldo01 + saldo04 || n(item.estoque_atual)
-  const saldoD   = saldoD01 + saldoD04 || n(item.estoque_disponivel)
+  // clamp negativos a 0 para evitar que estoque negativo de um almox reduza o total
+  const saldo    = Math.max(0, saldo01) + Math.max(0, saldo04) || n(item.estoque_atual)
+  const saldoD   = Math.max(0, saldoD01) + Math.max(0, saldoD04) || n(item.estoque_disponivel)
   const valorEst = n(item.valor_estoque_atual_01) + n(item.valor_estoque_atual_04) || n(item.valor_estoque_atual)
   // usa sempre o código filho quando existir — o || pai.x causava herdar o total do pai
   // (soma de todas as variações) para filhos com 0 vendas, inflando os cálculos
@@ -1012,6 +1013,10 @@ app.get('/api/dashboard', async (req, res) => {
       if (i._dde < 9999) { ddeTotal += i._dde; ddeCount++ }
     })
 
+    // Período anterior (dias 31-60): diferença entre 60d e 30d
+    const prevD30    = vend60 - vend30
+    const prevD30val = vend60val - vend30val
+
     res.json({
       loading:          false,
       totalProdutos:    items.length,
@@ -1022,7 +1027,7 @@ app.get('/api/dashboard', async (req, res) => {
       giroMedio:        giroCount > 0 ? giroTotal / giroCount : 0,
       ddeMedio:         ddeCount  > 0 ? ddeTotal  / ddeCount  : 0,
       produtosAtivos:   ativos,
-      vendasPorPeriodo: { d30: vend30, d60: vend60, d90: vend90, d30val: vend30val, d60val: vend60val, d90val: vend90val },
+      vendasPorPeriodo: { d30: vend30, d60: vend60, d90: vend90, d30val: vend30val, d60val: vend60val, d90val: vend90val, prevD30, prevD30val },
     })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1049,6 +1054,25 @@ app.get('/api/blip/assistencia', async (req, res) => {
 app.get('/api/blip/assistencia/itens/:id', async (req, res) => {
   try { res.json(await blipGet(`/blip/assistencia/itens/${req.params.id}`, { cpfcnpj: req.query.cpfcnpj })) }
   catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ─── Alertas de ruptura ───────────────────────────────────────────────────────
+app.get('/api/alertas', async (req, res) => {
+  try {
+    if (!warmState.done) return res.json({ loading: true, ruptura: [], risco: [] })
+    const all = await getProdutos()
+    const ruptura = all
+      .filter(i => i._saldo === 0 && (i._vend30 ?? 0) > 0)
+      .sort((a, b) => (b._vend30 ?? 0) - (a._vend30 ?? 0))
+      .slice(0, 50)
+      .map(i => ({ produto: i.produto, descricao: i.descricao, grupo: i.grupo, vend30: i._vend30, foto: i._foto, nomeFornecedor: i.nomeFornecedor }))
+    const risco = all
+      .filter(i => i._saldo > 0 && (i._dde ?? 9999) < 30 && (i._dde ?? 9999) < 9999 && (i._vend90 ?? 0) > 0)
+      .sort((a, b) => (a._dde ?? 9999) - (b._dde ?? 9999))
+      .slice(0, 30)
+      .map(i => ({ produto: i.produto, descricao: i.descricao, grupo: i.grupo, dde: i._dde, saldo: i._saldo, vend30: i._vend30, foto: i._foto, nomeFornecedor: i.nomeFornecedor }))
+    res.json({ loading: false, ruptura, risco })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.delete('/api/cache', (req, res) => {

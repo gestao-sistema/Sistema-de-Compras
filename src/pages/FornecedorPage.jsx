@@ -1,7 +1,21 @@
-import { useState, useMemo, useRef } from 'react'
+﻿import { useState, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import FotoZoom from '../components/FotoZoom'
+
+function calcMarkup(custo, preco) {
+  if (custo > 0 && preco > 0) return preco / custo
+  return null
+}
+function fMarkup(custo, preco) {
+  const mk = calcMarkup(custo, preco)
+  return mk === null ? '—' : `${mk.toFixed(2)}x`
+}
+function mkColor(custo, preco) {
+  const mk = calcMarkup(custo, preco)
+  if (mk === null) return 'var(--text-muted)'
+  return mk >= 3 ? '#a3e635' : mk >= 2 ? '#f5c518' : '#f87171'
+}
 
 const SORT_OPTS = [
   { id: 'lucro',    label: 'Lucro' },
@@ -11,7 +25,7 @@ const SORT_OPTS = [
 
 export default function FornecedorPage() {
   const [sortBy,      setSortBy]      = useState('lucro')
-  const [expanded,    setExpanded]    = useState({})
+  const [expanded,    setExpanded]    = useState(null)
   const [fornFiltro,  setFornFiltro]  = useState('')
   const [dataInicio,  setDataInicio]  = useState('')
   const [dataFim,     setDataFim]     = useState('')
@@ -47,25 +61,35 @@ export default function FornecedorPage() {
     return list
   }, [data.fornecedores])
 
-  function toggle(nome) { setExpanded(p => ({ ...p, [nome]: !p[nome] })) }
+  function toggle(nome) { setExpanded(cur => cur === nome ? null : nome) }
   function reset() { setFornFiltro(''); setDataInicio(''); setDataFim(''); setGrupoFiltro(''); setTag2Filtro(''); setPedraFiltro(''); setRupturaFiltro('') }
 
-  // KPIs globais
-  const totCusto   = data.fornecedores.reduce((s, f) => s + f.custoVendas, 0)
-  const totVendida = data.fornecedores.reduce((s, f) => s + f.qtdVendida,  0)
-  const totVenda   = data.fornecedores.reduce((s, f) => s + f.vendaReal,   0)
+  // KPIs — recalculados com base nos produtos filtrados
+  const kpiProdutos = useMemo(() => {
+    const todos = fornFiltered.flatMap(f => f.produtos)
+    return applyProdFiltros(todos, prodFiltros)
+  }, [fornFiltered, grupoFiltro, tag2Filtro, pedraFiltro, rupturaFiltro])
+
+  const fornComProdutos = useMemo(() => {
+    const hasProd = new Set(kpiProdutos.map(p => p.produto))
+    return fornFiltered.filter(f => f.produtos.some(p => hasProd.has(p.produto)))
+  }, [fornFiltered, kpiProdutos])
+
+  const totVendida = kpiProdutos.reduce((s, p) => s + (p.vendida  || 0), 0)
+  const totCusto   = kpiProdutos.reduce((s, p) => s + (p.custoVendas || 0), 0)
+  const totVenda   = kpiProdutos.reduce((s, p) => s + (p.vendaReal  || 0), 0)
   const totLucro   = totVenda - totCusto
   const totMargem  = totVenda > 0 ? (totLucro / totVenda) * 100 : 0
 
   return (
-    <div className="page-body space-y-4" style={{ paddingTop: 16 }}>
+    <div className="page-body space-y-4">
 
       {/* KPIs */}
       <div className="grid grid-cols-5 gap-3">
-        <KPI label="Fornecedores"   value={fNum(data.fornecedores.length)} color="#f5c518" />
-        <KPI label="Peças Vendidas" value={fNum(totVendida)}               color="#00b4d8" />
-        <KPI label="Custo Total"    value={fBRL(totCusto)}                 color="#f87171" />
-        <KPI label="Venda"          value={fBRL(totVenda)}                 color="#a3e635" />
+        <KPI label="Fornecedores"   value={fNum(fornComProdutos.length)} color="#f5c518" />
+        <KPI label="Peças Vendidas" value={fNum(totVendida)}             color="#00b4d8" />
+        <KPI label="Custo Total"    value={fBRL(totCusto)}               color="#f87171" />
+        <KPI label="Venda"          value={fBRL(totVenda)}               color="#a3e635" />
         <KPI label={`Lucro (${totMargem.toFixed(1)}%)`} value={fBRL(totLucro)} color="#818cf8" />
       </div>
 
@@ -74,14 +98,14 @@ export default function FornecedorPage() {
         <div className="flex items-end gap-4 flex-wrap">
           {/* Classificar por */}
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Classificar por</div>
-            <div className="flex gap-1" style={{ background: '#141520', borderRadius: 6, padding: 3 }}>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Classificar por</div>
+            <div className="flex gap-1" style={{ background: 'var(--bg-card2)', borderRadius: 6, padding: 3 }}>
               {SORT_OPTS.map(o => (
                 <button key={o.id} onClick={() => setSortBy(o.id)}
                   className="px-4 py-1.5 rounded text-xs font-bold transition-all"
                   style={sortBy === o.id
                     ? { background: '#f5c518', color: '#0d0e16' }
-                    : { background: 'transparent', color: '#6b7280' }}>
+                    : { background: 'transparent', color: 'var(--text-muted)' }}>
                   {o.label}
                 </button>
               ))}
@@ -90,7 +114,7 @@ export default function FornecedorPage() {
 
           {/* Filtro Fornecedor */}
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Fornecedor</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Fornecedor</div>
             <select value={fornFiltro} onChange={e => setFornFiltro(e.target.value)} className="inp text-xs" style={{ minWidth: 180 }}>
               <option value="">Todos</option>
               {data.nomesDisponiveis.map(n => <option key={n} value={n}>{n}</option>)}
@@ -99,17 +123,17 @@ export default function FornecedorPage() {
 
           {/* Filtro Data */}
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Emissão — De</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Emissão — De</div>
             <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className="inp text-xs" style={{ width: 140 }} />
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Até</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Até</div>
             <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="inp text-xs" style={{ width: 140 }} />
           </div>
 
           {/* Grupo */}
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Grupo</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Grupo</div>
             <select value={grupoFiltro} onChange={e => setGrupoFiltro(e.target.value)} className="inp text-xs" style={{ minWidth: 130 }}>
               <option value="">Todos</option>
               {opGrupos.map(g => <option key={g} value={g}>{g}</option>)}
@@ -118,7 +142,7 @@ export default function FornecedorPage() {
 
           {/* Tag2 */}
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Tag2</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Tag2</div>
             <select value={tag2Filtro} onChange={e => setTag2Filtro(e.target.value)} className="inp text-xs" style={{ minWidth: 130 }}>
               <option value="">Todos</option>
               {opTag2s.map(t => <option key={t} value={t}>{t}</option>)}
@@ -127,7 +151,7 @@ export default function FornecedorPage() {
 
           {/* Tipo de Pedra */}
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Tipo de Pedra</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Tipo de Pedra</div>
             <select value={pedraFiltro} onChange={e => setPedraFiltro(e.target.value)} className="inp text-xs" style={{ minWidth: 130 }}>
               <option value="">Todos</option>
               {opPedras.map(p => <option key={p} value={p}>{p}</option>)}
@@ -136,7 +160,7 @@ export default function FornecedorPage() {
 
           {/* Ruptura */}
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>Ruptura</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Ruptura</div>
             <select value={rupturaFiltro} onChange={e => setRupturaFiltro(e.target.value)} className="inp text-xs" style={{ minWidth: 120 }}>
               <option value="">Todos</option>
               <option value="ruptura">Ruptura</option>
@@ -152,9 +176,26 @@ export default function FornecedorPage() {
         ? <div className="state-box"><div className="spinner" /><p>Carregando fornecedores…</p></div>
         : q.isError
         ? <div className="state-box"><p style={{ color: '#f87171' }}>Erro: {q.error?.message}</p></div>
-        : <ResumoTab fornecedores={fornFiltered} expanded={expanded} toggle={toggle} sortBy={sortBy} prodFiltros={prodFiltros} />}
+        : <>
+            <GlobalTop7 fornecedores={fornFiltered} sortBy={sortBy} prodFiltros={prodFiltros} />
+            <ResumoTab fornecedores={fornFiltered} expanded={expanded} toggle={toggle} sortBy={sortBy} prodFiltros={prodFiltros} />
+          </>
+      }
     </div>
   )
+}
+
+// ─── TOP 7 GLOBAL ─────────────────────────────────────────────────────────────
+function GlobalTop7({ fornecedores, sortBy, prodFiltros }) {
+  const allProdutos = useMemo(() => {
+    const todos = fornecedores.flatMap(f =>
+      f.produtos.map(p => ({ ...p, nomeFornecedor: f.nome }))
+    )
+    return applyProdFiltros(todos, prodFiltros)
+  }, [fornecedores, prodFiltros])
+
+  if (allProdutos.length === 0) return null
+  return <Top7Vendidos produtos={allProdutos} sortBy={sortBy} globalLabel />
 }
 
 function applyProdFiltros(produtos, { grupoFiltro, tag2Filtro, pedraFiltro, rupturaFiltro }) {
@@ -181,7 +222,7 @@ function ResumoTab({ fornecedores, expanded, toggle, sortBy, prodFiltros }) {
       {visiveis.map(f => {
         const produtos = hasProdFiltro ? applyProdFiltros(f.produtos, prodFiltros) : f.produtos
 
-        const isOpen  = !!expanded[f.nome]
+        const isOpen  = expanded === f.nome
         const mgColor = f.margem >= 50 ? '#a3e635' : f.margem >= 30 ? '#f5c518' : '#f87171'
 
         return (
@@ -190,16 +231,16 @@ function ResumoTab({ fornecedores, expanded, toggle, sortBy, prodFiltros }) {
             <div onClick={() => toggle(f.nome)} style={{
               cursor: 'pointer', padding: '14px 20px',
               display: 'flex', alignItems: 'center', gap: 16,
-              background: isOpen ? '#1a1c30' : '#181929',
+              background: isOpen ? 'var(--bg-hover)' : 'var(--bg-card2)',
             }}
-              onMouseEnter={e => e.currentTarget.style.background = '#1e2038'}
-              onMouseLeave={e => e.currentTarget.style.background = isOpen ? '#1a1c30' : '#181929'}>
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+              onMouseLeave={e => e.currentTarget.style.background = isOpen ? 'var(--bg-hover)' : 'var(--bg-card2)'}>
 
               <span style={{ color: '#f5c518', fontSize: 13, width: 14 }}>{isOpen ? '▼' : '▶'}</span>
 
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 15, color: '#e8eaf0' }}>{f.nome}</div>
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{f.nome}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                   {hasProdFiltro ? `${produtos.length} produto${produtos.length !== 1 ? 's' : ''} filtrados` : `${f.produtosCount} produto${f.produtosCount !== 1 ? 's' : ''}`}
                   {f.pedidosCount > 0 ? ` · ${f.pedidosCount} pedido${f.pedidosCount !== 1 ? 's' : ''} em aberto` : ''}{' · '}
                   <span style={{ color: '#00b4d8' }}>{fNum(f.qtdVendida)} peças vendidas</span>
@@ -216,8 +257,8 @@ function ResumoTab({ fornecedores, expanded, toggle, sortBy, prodFiltros }) {
 
             {/* Detalhe expandido */}
             {isOpen && (
-              <div style={{ borderTop: '1px solid #22253a' }}>
-                <Top5Vendidos produtos={produtos} sortBy={sortBy} />
+              <div style={{ borderTop: '1px solid var(--border)' }}>
+                <Top7Vendidos produtos={produtos} sortBy={sortBy} />
                 <TodosProdutos produtos={produtos} sortBy={sortBy} />
               </div>
             )}
@@ -238,33 +279,33 @@ function ResumoTab({ fornecedores, expanded, toggle, sortBy, prodFiltros }) {
 }
 
 // ─── Top 5 do fornecedor (ordem segue sortBy) ────────────────────────────────
-const TOP5_LABEL = { lucro: 'Top 5 Maior Lucro', margem: 'Top 5 Maior Margem', vendidas: 'Top 5 Mais Vendidos' }
+const TOP5_LABEL = { lucro: 'Top 7 Maior Lucro', margem: 'Top 7 Maior Margem', vendidas: 'Top 7 Mais Vendidos' }
 const TOP5_SORT  = {
   lucro:    (a, b) => b.lucro    - a.lucro,
   margem:   (a, b) => b.margem   - a.margem,
   vendidas: (a, b) => b.vendida  - a.vendida,
 }
 
-function Top5Vendidos({ produtos, sortBy = 'vendidas' }) {
-  const top5 = [...produtos]
-    .filter(p => p.vendida > 0 || p.lucro > 0)
+function Top7Vendidos({ produtos, sortBy = 'vendidas', globalLabel = false }) {
+  const top7 = [...produtos]
+    .filter(p => (p.vendida > 0 || p.lucro > 0) && p.custo > 0)
     .sort(TOP5_SORT[sortBy] || TOP5_SORT.vendidas)
-    .slice(0, 5)
+    .slice(0, 7)
 
-  if (top5.length === 0) return null
+  if (top7.length === 0) return null
 
   return (
-    <div style={{ background: '#0e1428', borderBottom: '2px solid #f5c51830', padding: '12px 20px' }}>
+    <div style={{ background: 'var(--bg-card2)', borderBottom: '2px solid #f5c51830', padding: '12px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: '#f5c518', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          ★ {TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}
+          ★ {globalLabel ? `🌐 Geral — ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}` : (TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas)}
         </span>
         <div style={{ flex: 1, height: 1, background: '#f5c51830' }} />
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        {top5.map((p, i) => {
-          const mgColor = p.margem >= 50 ? '#a3e635' : p.margem >= 30 ? '#f5c518' : '#f87171'
-          const medals  = ['🥇', '🥈', '🥉', '4°', '5°']
+        {top7.map((p, i) => {
+          const mgColor  = p.margem >= 50 ? '#a3e635' : p.margem >= 30 ? '#f5c518' : '#f87171'
+          const medals   = ['🥇', '🥈', '🥉', '4°', '5°', '6°', '7°']
           return (
             <div key={p.produto} style={{
               flex: '1 1 180px', minWidth: 170, maxWidth: 220,
@@ -291,17 +332,19 @@ function Top5Vendidos({ produtos, sortBy = 'vendidas' }) {
               </div>
 
               {/* Descrição */}
-              <div style={{ fontSize: 11, color: '#d1d5db', marginBottom: 8,
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#ffffff', marginBottom: 8,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 title={p.descricao}>{p.descricao}</div>
 
               {/* Métricas */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                <Metric label="Vendidas"  value={fNum(p.vendida)}   color="#f5c518" bold />
-                <Metric label="Estoque"   value={fNum(p.saldo)}     color="#e8eaf0" />
-                <Metric label="Receita"   value={fBRL(p.vendaReal)} color="#a3e635" />
-                <Metric label="Lucro"     value={fBRL(p.lucro)}     color="#818cf8" />
-                <Metric label="Margem"    value={`${p.margem.toFixed(1)}%`} color={mgColor} />
+                <Metric label="Vendidas"  value={fNum(p.vendida)}             color="#f5c518" bold />
+                <Metric label="Estoque"   value={fNum(p.saldo)}               color="#f5c518" />
+                <Metric label="Receita"   value={fBRL(p.vendaReal)}           color="#a3e635" />
+                <Metric label="Lucro"     value={fBRL(p.lucro)}               color="#818cf8" />
+                <Metric label="Margem"    value={`${p.margem.toFixed(1)}%`}   color={mgColor} />
+                <Metric label="Custo"     value={fBRL(p.custo)}              color="#f87171" />
+                <Metric label="Markup"    value={fMarkup(p.custo, p.preco)} color={mkColor(p.custo, p.preco)} />
               </div>
             </div>
           )
@@ -314,7 +357,7 @@ function Top5Vendidos({ produtos, sortBy = 'vendidas' }) {
 function Metric({ label, value, color, bold }) {
   return (
     <div>
-      <div style={{ fontSize: 9, color: '#4b5063', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 9, color: '#8b93b0', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{label}</div>
       <div style={{ fontSize: 12, fontFamily: 'monospace', color, fontWeight: bold ? 800 : 600 }}>{value}</div>
     </div>
   )
@@ -341,35 +384,36 @@ function TodosProdutos({ produtos, sortBy }) {
     <div style={{ overflowX: 'auto', overflowY: 'visible' }}>
       <table className="w-full" style={{ borderCollapse: 'collapse', minWidth: 900 }}>
         <thead>
-          <tr style={{ background: '#141520', borderBottom: '2px solid #22253a', position: 'sticky', top: 0, zIndex: 10 }}>
-            {['Foto','Código','Descrição','Grupo','Estoque','Vendidas','Custo Unit.','Preço Venda','Custo Vendas','Receita','Lucro','Margem'].map(h => (
-              <th key={h} style={{ ...thStyle(h==='Descrição'), fontSize: 10, background: '#141520' }}>{h}</th>
+          <tr style={{ background: 'var(--bg-card2)', borderBottom: '2px solid #22253a', position: 'sticky', top: 0, zIndex: 10 }}>
+            {['Foto','Código','Descrição','Grupo','Estoque','Vendidas','Custo Unit.','Preço Venda','Markup','Custo Vendas','Receita','Lucro','Margem'].map(h => (
+              <th key={h} style={{ ...thStyle(h==='Descrição'), fontSize: 10, background: 'var(--bg-card2)' }}>{h}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {visivel.map((p, i) => {
             const mgColor = p.margem >= 50 ? '#a3e635' : p.margem >= 30 ? '#f5c518' : '#f87171'
-            const isTop5  = i < 5
+            const isTop7  = i < 7
             return (
               <tr key={p.produto} style={{
-                background: isTop5
-                  ? (i === 0 ? '#1a150050' : '#11132050')
-                  : (i % 2 === 0 ? '#181929' : '#1a1c2e'),
-                borderBottom: `1px solid ${isTop5 ? '#f5c51820' : '#22253a'}`,
+                background: isTop7
+                  ? (i === 0 ? 'color-mix(in srgb, #f5c518 8%, var(--bg-card))' : 'color-mix(in srgb, #818cf8 5%, var(--bg-card))')
+                  : 'transparent',
+                borderBottom: `1px solid ${isTop7 ? 'var(--accent)20' : 'var(--border)'}`,
               }}>
                 <td style={td}>
                   <FotoZoom url={p.fotoUrl ? `/api/image-proxy?url=${encodeURIComponent(p.fotoUrl)}` : null} alt={p.descricao} size={30} />
                 </td>
                 <td style={{ ...td, fontFamily: 'monospace', fontSize: 11, color: '#f5c518', whiteSpace: 'nowrap' }}>{p.produto}</td>
-                <td style={{ ...td, fontSize: 12, color: '#d1d5db', maxWidth: 220 }}>
+                <td style={{ ...td, fontSize: 12, color: 'var(--text)', maxWidth: 220 }}>
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.descricao}>{p.descricao}</div>
                 </td>
                 <td style={{ ...td, textAlign: 'center', fontSize: 11, color: '#00b4d8' }}>{p.grupo}</td>
-                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: p.saldo === 0 ? '#f87171' : '#e8eaf0' }}>{fNum(p.saldo)}</td>
-                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: isTop5 ? '#f5c518' : '#e8eaf0', fontWeight: isTop5 ? 800 : 400 }}>{fNum(p.vendida)}</td>
+                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: p.saldo === 0 ? '#f87171' : 'var(--text)' }}>{fNum(p.saldo)}</td>
+                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: isTop7 ? '#f5c518' : 'var(--text)', fontWeight: isTop7 ? 800 : 400 }}>{fNum(p.vendida)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#f87171' }}>{fBRL(p.custo)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#a3e635' }}>{fBRL(p.preco)}</td>
+                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: mkColor(p.custo, p.preco) }}>{fMarkup(p.custo, p.preco)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#fb923c', fontWeight: 700 }}>{fBRL(p.custoVendas)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(p.vendaReal)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#818cf8', fontWeight: 700 }}>{fBRL(p.lucro)}</td>
@@ -381,7 +425,7 @@ function TodosProdutos({ produtos, sortBy }) {
       </table>
 
       {limite < sorted.length && (
-        <div style={{ textAlign: 'center', padding: '12px 0', borderTop: '1px solid #22253a' }}>
+        <div style={{ textAlign: 'center', padding: '12px 0', borderTop: '1px solid var(--border)' }}>
           <button
             onClick={() => setLimite(l => l + PAGE_SIZE)}
             style={{
@@ -407,7 +451,7 @@ function DuplicadosTab({ duplicados, allFornNames }) {
     <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
       <table className="w-full" style={{ borderCollapse: 'collapse', minWidth: 700 }}>
         <thead>
-          <tr style={{ background: '#141520', borderBottom: '2px solid #2a2d40' }}>
+          <tr style={{ background: 'var(--bg-card2)', borderBottom: '2px solid #2a2d40' }}>
             <th style={thStyle(false)}>Foto</th>
             <th style={thStyle(false)}>Código</th>
             <th style={thStyle(true)}>Descrição</th>
@@ -430,12 +474,12 @@ function DuplicadosTab({ duplicados, allFornNames }) {
             const diffPct = minCost > 0 ? (((maxCost - minCost) / minCost) * 100).toFixed(1) : null
 
             return (
-              <tr key={i} style={{ background: i % 2 === 0 ? '#181929' : '#1a1c2e', borderBottom: '1px solid #22253a' }}>
+              <tr key={i} style={{ background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card2)', borderBottom: '1px solid var(--border)' }}>
                 <td style={{ ...td, width: 44 }}>
                   <FotoZoom url={d.fotoUrl ? `/api/image-proxy?url=${encodeURIComponent(d.fotoUrl)}` : null} alt={d.descricao} size={32} />
                 </td>
                 <td style={{ ...td, fontFamily: 'monospace', fontSize: 11, color: '#f5c518', whiteSpace: 'nowrap' }}>{d.produto}</td>
-                <td style={{ ...td, fontSize: 12, color: '#d1d5db', maxWidth: 200 }}>
+                <td style={{ ...td, fontSize: 12, color: 'var(--text)', maxWidth: 200 }}>
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.descricao}>{d.descricao}</div>
                   <div style={{ fontSize: 10, color: '#4b5563' }}>{d.grupo}</div>
                 </td>
@@ -451,7 +495,7 @@ function DuplicadosTab({ duplicados, allFornNames }) {
                       {f ? (
                         <div style={{
                           display: 'inline-block',
-                          background: isBest ? '#14290f' : isWorst ? '#2d0f0f' : '#1a1c30',
+                          background: isBest ? '#14290f' : isWorst ? '#2d0f0f' : 'var(--bg-card2)',
                           border: `1px solid ${isBest ? '#4ade80' : isWorst ? '#f87171' : '#2a2d40'}`,
                           borderRadius: 6, padding: '4px 10px',
                         }}>
@@ -459,7 +503,7 @@ function DuplicadosTab({ duplicados, allFornNames }) {
                             color: isBest ? '#4ade80' : isWorst ? '#f87171' : '#e8eaf0' }}>
                             {fBRL(f.custoMedio)}
                           </div>
-                          <div style={{ fontSize: 10, color: '#6b7280', marginTop: 1 }}>{fNum(f.qtd)} un.</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{fNum(f.qtd)} un.</div>
                         </div>
                       ) : (
                         <span style={{ color: '#2a2d40', fontSize: 12 }}>—</span>
@@ -474,7 +518,7 @@ function DuplicadosTab({ duplicados, allFornNames }) {
                       borderRadius: 4, padding: '3px 8px', color: '#fbbf24', fontWeight: 700 }}>
                       +{diffPct}%
                     </span>
-                  ) : <span style={{ color: '#3a3f5c' }}>—</span>}
+                  ) : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                 </td>
               </tr>
             )
@@ -489,7 +533,7 @@ function DuplicadosTab({ duplicados, allFornNames }) {
 function KPI({ label, value, color }) {
   return (
     <div className="card" style={{ borderLeft: `3px solid ${color}` }}>
-      <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>{label}</div>
+      <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 900, color, fontFamily: 'monospace' }}>{value}</div>
     </div>
   )
@@ -498,7 +542,7 @@ function KPI({ label, value, color }) {
 function Stat({ label, value, color }) {
   return (
     <div style={{ textAlign: 'right' }}>
-      <div style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 800, color, fontFamily: 'monospace' }}>{value}</div>
     </div>
   )
@@ -507,9 +551,9 @@ function Stat({ label, value, color }) {
 function thStyle(left = false) {
   return {
     padding: '8px 10px', textAlign: left ? 'left' : 'center',
-    color: '#9ca3af', fontSize: 11, fontWeight: 600,
+    color: 'var(--text-muted)', fontSize: 11, fontWeight: 600,
     textTransform: 'uppercase', letterSpacing: '0.05em',
-    borderBottom: '1px solid #22253a', whiteSpace: 'nowrap',
+    borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap',
   }
 }
 

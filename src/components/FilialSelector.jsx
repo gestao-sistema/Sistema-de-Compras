@@ -1,6 +1,6 @@
 export default function FilialSelector({ value, onChange }) {
   const opts = [
-    { id: '',    label: 'Todos' },
+    { id: '',    label: 'Almox 1 e 2' },
     { id: '01',  label: 'Almox 01' },
     { id: '04',  label: 'Almox 04' },
   ]

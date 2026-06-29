@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, toRows, fDate } from '../api/client'
 import DataTable from '../components/DataTable'
@@ -66,7 +66,7 @@ export default function ClientesPage() {
         <div className="card mb-4">
           <form onSubmit={handleSearch} className="flex gap-3 items-end">
             <div>
-              <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{ color: '#6b7280' }}>
+              <label className="text-xs font-semibold uppercase tracking-wider block mb-1.5" style={{ color: 'var(--text-muted)' }}>
                 CPF / CNPJ
               </label>
               <input
@@ -94,7 +94,7 @@ export default function ClientesPage() {
         {/* Dados do cliente */}
         {clienteInfo && (
           <div className="card mb-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#6b7280' }}>
+            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>
               Dados do Cliente
             </h2>
             <div className="grid grid-cols-2 gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
@@ -102,8 +102,8 @@ export default function ClientesPage() {
                 .filter(([, v]) => v != null && typeof v !== 'object')
                 .map(([k, v]) => (
                   <div key={k}>
-                    <div className="text-xs uppercase tracking-wider mb-0.5" style={{ color: '#4b5063' }}>{k}</div>
-                    <div className="text-sm font-medium" style={{ color: '#e8eaf0' }}>{String(v)}</div>
+                    <div className="text-xs uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-dim)' }}>{k}</div>
+                    <div className="text-sm font-medium" style={{ color: 'var(--text)' }}>{String(v)}</div>
                   </div>
                 ))}
             </div>
@@ -113,7 +113,7 @@ export default function ClientesPage() {
         {/* Assistências */}
         {osRows.length > 0 && (
           <div className="card mb-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#6b7280' }}>
+            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>
               Histórico de Assistências ({osRows.length})
             </h2>
             <DataTable

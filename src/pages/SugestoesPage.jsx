@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import { BadgeABC } from '../components/Badge'
@@ -60,12 +60,12 @@ export default function SugestoesPage() {
   return (
     <div>
       {abcQ.isFetching && (
-        <div style={{ position: 'absolute', top: 12, right: 24, zIndex: 20 }}>
-          <span className="text-xs" style={{ color: '#f5c518' }}>↻ atualizando…</span>
+        <div style={{ position: 'fixed', top: 18, right: 70, zIndex: 20 }}>
+          <span className="text-xs" style={{ color: 'var(--accent)' }}>↻ atualizando…</span>
         </div>
       )}
 
-      <div className="page-body space-y-4" style={{ paddingTop: 16 }}>
+      <div className="page-body space-y-4">
 
         {/* Cards das 3 curvas */}
         <div className="grid grid-cols-3 gap-4">
@@ -73,14 +73,15 @@ export default function SugestoesPage() {
             const isActive = curva === c.id
             return (
               <button key={c.id} onClick={() => changeCurva(c.id)} style={{
-                textAlign: 'left', background: '#1a1c2a', cursor: 'pointer',
-                border: `2px solid ${isActive ? c.color : '#22253a'}`,
+                textAlign: 'left', background: 'var(--bg-card)', cursor: 'pointer',
+                border: `2px solid ${isActive ? c.color : 'var(--border)'}`,
                 borderRadius: 10, padding: '16px 20px', transition: 'border-color 0.15s',
+                boxShadow: isActive ? `0 0 0 1px ${c.color}33, 0 4px 16px ${c.color}18` : '0 1px 4px var(--shadow)',
               }}>
-                <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.05em', marginBottom: 4, color: isActive ? c.color : '#e8eaf0' }}>
+                <div style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.05em', marginBottom: 4, color: isActive ? c.color : 'var(--text)' }}>
                   {c.label}
                 </div>
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 12 }}>{c.sub}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>{c.sub}</div>
                 {isActive
                   ? <div style={{ display: 'flex', gap: 8 }}>
                       <AbcChip label="A" count={totalA} active={abcFilter === 'A'} onClick={e => { e.stopPropagation(); changeAbc(abcFilter === 'A' ? '' : 'A') }} />
@@ -88,9 +89,9 @@ export default function SugestoesPage() {
                       <AbcChip label="C" count={totalC} active={abcFilter === 'C'} onClick={e => { e.stopPropagation(); changeAbc(abcFilter === 'C' ? '' : 'C') }} />
                     </div>
                   : <div style={{ display: 'flex', gap: 8 }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 4, background: '#14532d', color: '#4ade80', fontSize: 11, fontWeight: 700 }}>A</span>
-                      <span style={{ padding: '2px 8px', borderRadius: 4, background: '#7c2d12', color: '#fb923c', fontSize: 11, fontWeight: 700 }}>B</span>
-                      <span style={{ padding: '2px 8px', borderRadius: 4, background: '#7f1d1d', color: '#f87171', fontSize: 11, fontWeight: 700 }}>C</span>
+                      <span className="badge badge-A">A</span>
+                      <span className="badge badge-B">B</span>
+                      <span className="badge badge-C">C</span>
                     </div>
                 }
               </button>
@@ -102,28 +103,28 @@ export default function SugestoesPage() {
         <div className="card">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Grupo</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Grupo</div>
               <select value={grupoFilter} onChange={e => { setGrupoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
                 <option value="">Todos</option>
                 {opts.grupos.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Tipo de Pedra</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo de Pedra</div>
               <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 160 }}>
                 <option value="">Todas</option>
                 {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Fornecedor</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Fornecedor</div>
               <select value={fornFilter} onChange={e => { setFornFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 180 }}>
                 <option value="">Todos</option>
                 {opts.fornecedores.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Categoria</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Categoria</div>
               <select value={catFilter} onChange={e => { setCatFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 140 }}>
                 <option value="">Todas</option>
                 {opts.categorias.map(c => <option key={c} value={c}>{c}</option>)}
@@ -131,11 +132,11 @@ export default function SugestoesPage() {
             </div>
             <FilialSelector value={filialFilter} onChange={v => { setFilialFilter(v); setPage(0) }} />
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Código</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Código</div>
               <input value={codigoFilter} onChange={e => setCodigoFilter(e.target.value)} placeholder="ex: 215894" className="inp text-xs" style={{ width: 120 }} />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Descrição</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Descrição</div>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar…" className="inp text-xs" style={{ width: 170 }} />
             </div>
             {hasFilters && <button onClick={reset} className="btn-ghost text-xs self-end">✕ Limpar</button>}
@@ -150,7 +151,7 @@ export default function SugestoesPage() {
               <div style={{ opacity: abcQ.isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-xs font-bold uppercase tracking-widest" style={{ color: cDef.color }}>▌ {cDef.label}</p>
-                  <p className="text-xs" style={{ color: '#4b5063' }}>{total.toLocaleString('pt-BR')} produtos</p>
+                  <p className="text-xs" style={{ color: 'var(--text-dim)' }}>{total.toLocaleString('pt-BR')} produtos</p>
                 </div>
 
                 <div className="tbl-scroll">
@@ -169,8 +170,8 @@ export default function SugestoesPage() {
                     </colgroup>
                     <thead>
                       <tr>
-                        <th style={{ color: '#6b7280' }}>#</th>
-                        <th style={{ color: '#6b7280' }}>Foto</th>
+                        <th style={{ color: 'var(--text-muted)' }}>#</th>
+                        <th style={{ color: 'var(--text-muted)' }}>Foto</th>
                         <TH k="produto"         label="Código"           sortK={sortK} sortD={sortD} onSort={changeSort} />
                         <TH k="descricao"       label="Descrição"        sortK={sortK} sortD={sortD} onSort={changeSort} />
                         <TH k="grupo"           label="Grupo"            sortK={sortK} sortD={sortD} onSort={changeSort} />
@@ -187,14 +188,14 @@ export default function SugestoesPage() {
                       )}
                       {rows.map((row, i) => (
                         <tr key={i}>
-                          <td style={{ color: '#4b5063', fontFamily: 'monospace', fontSize: 12 }}>{page * PAGE_LIMIT + i + 1}</td>
+                          <td style={{ color: 'var(--text-dim)', fontFamily: 'monospace', fontSize: 12 }}>{page * PAGE_LIMIT + i + 1}</td>
                           <td><FotoZoom url={row._foto} alt={row.descricao} /></td>
                           <td>
                             <div style={{ color: '#f5c518', fontFamily: 'monospace', fontSize: 11 }}>{row.produtoBase}</div>
-                            <div style={{ color: '#4b5063', fontSize: 10 }}>{row.produto}</div>
+                            <div style={{ color: 'var(--text-dim)', fontSize: 10 }}>{row.produto}</div>
                           </td>
                           <td>
-                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', color: '#e8eaf0', fontSize: 12 }} title={row.descricao}>
+                            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text)', fontSize: 12 }} title={row.descricao}>
                               {row.descricao ?? '-'}
                             </span>
                           </td>
@@ -212,7 +213,7 @@ export default function SugestoesPage() {
 
                 {/* Paginação */}
                 <div className="flex items-center justify-between px-1 mt-3">
-                  <p className="text-xs" style={{ color: '#4b5063' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-dim)' }}>
                     {total > 0
                       ? `${(page * PAGE_LIMIT + 1).toLocaleString('pt-BR')}–${Math.min((page + 1) * PAGE_LIMIT, total).toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')}`
                       : '0 produtos'}
@@ -220,13 +221,13 @@ export default function SugestoesPage() {
                   <div className="flex items-center gap-2">
                     <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
                       className="px-3 py-1 rounded text-xs font-semibold"
-                      style={{ background: '#1e2035', color: page === 0 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+                      style={{ background: 'var(--bg-input)', color: page === 0 ? 'var(--text-dim)' : 'var(--text)', border: '1px solid var(--border2)' }}>
                       ← Anterior
                     </button>
-                    <span className="text-xs" style={{ color: '#6b7280' }}>{page + 1} / {totalPages || 1}</span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{page + 1} / {totalPages || 1}</span>
                     <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
                       className="px-3 py-1 rounded text-xs font-semibold"
-                      style={{ background: '#1e2035', color: page >= totalPages - 1 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+                      style={{ background: 'var(--bg-input)', color: page >= totalPages - 1 ? 'var(--text-dim)' : 'var(--text)', border: '1px solid var(--border2)' }}>
                       Próximo →
                     </button>
                   </div>
@@ -271,7 +272,7 @@ function FotoZoom({ url, alt }) {
   const [pos,     setPos]     = useState(null)
 
   if (!url || !visible) return (
-    <div style={{ width: 36, height: 36, background: '#20223a', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a3f5c' }}>
+    <div style={{ width: 36, height: 36, background: 'var(--bg-input)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)' }}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
       </svg>
@@ -283,7 +284,7 @@ function FotoZoom({ url, alt }) {
       onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setPos(null)}
     >
-      <img src={url} alt={alt} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, background: '#20223a', display: 'block' }}
+      <img src={url} alt={alt} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, background: 'var(--bg-input)', display: 'block' }}
         onError={() => setVisible(false)} />
       {pos && (
         <div className="foto-zoom-popup" style={{ left: pos.x + 16, top: Math.min(pos.y - 110, window.innerHeight - 230) }}>

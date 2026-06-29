@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import { BadgeDDE } from '../components/Badge'
@@ -58,6 +58,11 @@ export default function Dashboard() {
 
   const d      = kpi.data || {}
   const loaded = d.loading === false
+  const vp     = d.vendasPorPeriodo || {}
+
+  // Comparativo 30d atual vs 30d anterior (dias 31-60)
+  const delta30val  = vp.prevD30val > 0 ? ((vp.d30val - vp.prevD30val) / vp.prevD30val * 100) : null
+  const delta30unit = vp.prevD30    > 0 ? ((vp.d30    - vp.prevD30   ) / vp.prevD30    * 100) : null
 
   const optionsQ = useQuery({
     queryKey:        ['produtos-options'],
@@ -101,17 +106,17 @@ export default function Dashboard() {
   return (
     <div>
       {isFetching && !isWarm && (
-        <div style={{ position: 'absolute', top: 12, right: 24, zIndex: 20 }}>
-          <span className="text-xs" style={{ color: '#f5c518' }}>↻ atualizando…</span>
+        <div style={{ position: 'fixed', top: 18, right: 70, zIndex: 20 }}>
+          <span className="text-xs" style={{ color: 'var(--accent)' }}>↻ atualizando…</span>
         </div>
       )}
 
       {isWarm && (
-        <div style={{ background: '#1a1c2a', border: '1px solid #f5c518', borderRadius: 8, padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--accent)', borderRadius: 8, padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div className="spinner" />
           <div>
             <div style={{ color: '#f5c518', fontWeight: 600, fontSize: 13 }}>Carregando catálogo completo da API…</div>
-            <div style={{ color: '#9ca3af', fontSize: 12, marginTop: 2 }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2 }}>
               {d.pais > 0 ? `${d.pais.toLocaleString('pt-BR')} produtos pai carregados — ` : ''}aguarde ({d.elapsed}s)
             </div>
           </div>
@@ -121,12 +126,12 @@ export default function Dashboard() {
       <div className="page-body space-y-4">
         {/* KPIs */}
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-          <KPICard label="Saldo Atual"  value={fNum(d.saldoEstoque)}      sub="Estoque Atual"                    color="#e8eaf0" />
+          <KPICard label="Saldo Atual"  value={fNum(d.saldoEstoque)}      sub="Estoque Atual"                    color="var(--text)" />
           <KPICard label="Disponível"   value={fNum(d.saldoDisponivel)}   sub="Estoque Disponível"               color="#00b4d8" />
-          <KPICard label="Estoque"      value={fBRL(d.valorEstoque)}      sub="preço venda × qtd"               color="#a3e635" />
+          <KPICard label="Estoque"      value={fBRL(d.valorEstoque)}      sub="preço venda × qtd"                color="#a3e635" />
           <KPICard label="Custo Médio"  value={fBRL(d.custoMedio)}        sub="Σ(custo × saldo) / Σ saldo"      color="#a3e635" />
-          <KPICard label="Giro Médio"   value={`${fNum(d.giroMedio,1)}x`} sub="vendas 365d ÷ saldo médio"       color="#818cf8" />
-          <KPICard label="DDE Médio"    value={`${fNum(d.ddeMedio,0)} d`} sub="saldo ÷ (vendas 365d ÷ 365)"    color="#fb923c" />
+          <KPICard label="Vendas 30D"   value={fBRL(vp.d30val)}           sub={`Período anterior: ${fBRL(vp.prevD30val)}`} color="#f5c518" delta={delta30val} />
+          <KPICard label="Unid. 30D"    value={fNum(vp.d30)}              sub={`Período anterior: ${fNum(vp.prevD30)}`}    color="#fb923c" delta={delta30unit} />
         </div>
 
         {/* Tabela */}
@@ -142,8 +147,8 @@ export default function Dashboard() {
                 <button key={o.id} onClick={() => { setFilialFilter(o.id); setPage(0) }}
                   className="px-3 py-1 rounded text-xs font-bold transition-all"
                   style={filialFilter === o.id
-                    ? { background: '#f5c518', color: '#0d0e16' }
-                    : { background: '#20223a', color: '#6b7280', border: '1px solid #2a2d40' }}>
+                    ? { background: 'var(--accent)', color: 'var(--accent-text)' }
+                    : { background: 'var(--bg-input)', color: 'var(--text-muted)', border: '1px solid var(--border2)' }}>
                   {o.label}
                 </button>
               ))}
@@ -155,10 +160,10 @@ export default function Dashboard() {
 
           {/* Filtros extras — só na aba PRODUTO */}
           {tab === 'produto' && (
-            <div className="flex flex-wrap items-end gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid #22253a' }}>
+            <div className="flex flex-wrap items-end gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
               {/* Tipo */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Tipo</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo</div>
                 <div className="flex gap-1.5">
                   {[
                     { id: 'todos',     label: 'Todos' },
@@ -167,7 +172,7 @@ export default function Dashboard() {
                   ].map(({ id, label }) => (
                     <button key={id} onClick={() => changeTipo(id)}
                       className="px-3 py-1 rounded text-xs font-semibold transition-all"
-                      style={tipoFilter === id ? { background: '#f5c518', color: '#0d0e16' } : { background: '#20223a', color: '#8b90a7', border: '1px solid #2a2d40' }}>
+                      style={tipoFilter === id ? { background: 'var(--accent)', color: 'var(--accent-text)' } : { background: 'var(--bg-input)', color: 'var(--text-nav)', border: '1px solid var(--border2)' }}>
                       {label}
                     </button>
                   ))}
@@ -176,7 +181,7 @@ export default function Dashboard() {
 
               {/* Grupo */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Grupo</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Grupo</div>
                 <select value={grupoFilter} onChange={e => { setGrupoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
                   <option value="">Todos</option>
                   {opts.grupos.map(g => <option key={g} value={g}>{g}</option>)}
@@ -185,7 +190,7 @@ export default function Dashboard() {
 
               {/* Tipo de Pedra */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Tipo de Pedra</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo de Pedra</div>
                 <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 160 }}>
                   <option value="">Todas</option>
                   {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
@@ -194,7 +199,7 @@ export default function Dashboard() {
 
               {/* Categoria */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Categoria</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Categoria</div>
                 <select value={catFilter} onChange={e => { setCatFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 140 }}>
                   <option value="">Todas</option>
                   {opts.categorias.map(c => <option key={c} value={c}>{c}</option>)}
@@ -203,7 +208,7 @@ export default function Dashboard() {
 
               {/* TAG 2 */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>TAG 2</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>TAG 2</div>
                 <select value={tag2Filter} onChange={e => { setTag2Filter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 120 }}>
                   <option value="">Todas</option>
                   {opts.tag2s.map(t => <option key={t} value={t}>{t}</option>)}
@@ -212,7 +217,7 @@ export default function Dashboard() {
 
               {/* Estoque */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Estoque</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Estoque</div>
                 <select value={estoqueFilter} onChange={e => { setEstoqueFilter(e.target.value); setPage(0) }} className="inp text-xs"
                   style={{ minWidth: 150, borderColor: estoqueFilter === 'sem' ? '#f87171' : estoqueFilter === 'baixo' ? '#fb923c' : estoqueFilter === 'com' ? '#4ade80' : '#2a2d40', color: estoqueFilter === 'sem' ? '#f87171' : estoqueFilter === 'baixo' ? '#fb923c' : estoqueFilter === 'com' ? '#4ade80' : '#e8eaf0' }}>
                   <option value="">Todos</option>
@@ -225,7 +230,7 @@ export default function Dashboard() {
 
               {/* Ruptura */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Ruptura</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Ruptura</div>
                 <select value={rupturaFilter} onChange={e => changeRuptura(e.target.value)} className="inp text-xs"
                   style={{ minWidth: 160, borderColor: rupturaFilter === 'ruptura' ? '#f87171' : rupturaFilter === 'risco' ? '#fb923c' : '#2a2d40', color: rupturaFilter === 'ruptura' ? '#f87171' : rupturaFilter === 'risco' ? '#fb923c' : '#e8eaf0' }}>
                   <option value="">Todos</option>
@@ -237,7 +242,7 @@ export default function Dashboard() {
 
               {/* Código */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Código</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Código</div>
                 <input value={codigoFilter} onChange={e => setCodigoFilter(e.target.value)} placeholder="ex: 215894" className="inp text-xs" style={{ width: 120 }} />
               </div>
 
@@ -277,16 +282,25 @@ function DrillTab({ label, id, active, onClick }) {
   const isActive = active === id
   return (
     <button onClick={() => onClick(id)} className="px-5 py-2 rounded text-xs font-bold uppercase tracking-wider transition-all"
-      style={isActive ? { background: '#f5c518', color: '#0d0e16' } : { background: '#1e2035', color: '#8b90a7', border: '1px solid #2a2d40' }}>
+      style={isActive ? { background: 'var(--accent)', color: 'var(--accent-text)' } : { background: 'var(--bg-input)', color: 'var(--text-nav)', border: '1px solid var(--border2)' }}>
       {isActive ? '▼' : '▶'} {label}
     </button>
   )
 }
 
-function KPICard({ label, value, sub, color }) {
+function KPICard({ label, value, sub, color, delta }) {
+  const deltaColor = delta == null ? null : delta >= 0 ? '#4ade80' : '#f87171'
+  const deltaIcon  = delta == null ? null : delta >= 0 ? '▲' : '▼'
   return (
     <div className="card flex flex-col justify-between" style={{ minHeight: 100 }}>
-      <span className="kpi-label" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span className="kpi-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+        {delta != null && (
+          <span style={{ fontSize: 10, fontWeight: 800, color: deltaColor, background: `${deltaColor}18`, padding: '1px 5px', borderRadius: 4, flexShrink: 0, marginLeft: 4 }}>
+            {deltaIcon} {Math.abs(delta).toFixed(1)}%
+          </span>
+        )}
+      </div>
       <div className="font-black tracking-tight" style={{ color, fontSize: 'clamp(16px, 2vw, 26px)', lineHeight: 1.1, margin: '6px 0 4px' }}>{value}</div>
       <div className="kpi-sub" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
     </div>
@@ -305,7 +319,7 @@ function VendasPeriodo({ data }) {
       {bars.map(({ label, value }) => (
         <div key={label}>
           <div className="flex justify-between items-center mb-1">
-            <span className="text-xs" style={{ color: '#6b7280' }}>{label}</span>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</span>
             <span className="text-sm font-bold" style={{ color: '#00b4d8' }}>{fBRL(value)}</span>
           </div>
           <div className="progress">
@@ -377,28 +391,28 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
                     <FotoZoom url={row._foto} alt={row.descricao} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                        <span style={{ color: '#e8eaf0', fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 155, display: 'block' }} title={row.descricao}>
+                        <span style={{ color: 'var(--text)', fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 155, display: 'block' }} title={row.descricao}>
                           {row.descricao ?? '-'}
                         </span>
                         <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, flexShrink: 0, background: row.isNovo ? '#14532d' : '#1e3a5f', color: row.isNovo ? '#4ade80' : '#60a5fa' }}>
                           {row.isNovo ? 'NOVO' : 'REP'}
                         </span>
                       </div>
-                      <div style={{ color: '#4b5063', fontSize: 11 }}>{row.produtoBase} › {row.produto}</div>
+                      <div style={{ color: 'var(--text-dim)', fontSize: 11 }}>{row.produtoBase} › {row.produto}</div>
                     </div>
                   </div>
                 </td>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace' }}>{fNum(row._saldo)}</td>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace', color: '#00b4d8' }}>{fNum(row._saldoDisp)}</td>
                 <td style={{ textAlign: 'center' }}>
-                  {row._vend30 > 0 ? <span style={{ color: '#4ade80', fontWeight: 700 }}>{fNum(row._vend30)}</span> : <span style={{ color: '#4b5063' }}>-</span>}
+                  {row._vend30 > 0 ? <span style={{ color: '#4ade80', fontWeight: 700 }}>{fNum(row._vend30)}</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
                 </td>
                 <td style={{ textAlign: 'center' }}>
-                  {row._taxaSaida > 0 ? <span style={{ color: '#4ade80' }}>{row._taxaSaida.toFixed(1)}%</span> : <span style={{ color: '#4b5063' }}>-</span>}
+                  {row._taxaSaida > 0 ? <span style={{ color: '#4ade80' }}>{row._taxaSaida.toFixed(1)}%</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
                 </td>
                 <td style={{ textAlign: 'center' }}><BadgeDDE value={row._dde} /></td>
                 <td style={{ textAlign: 'center' }}>
-                  {row._giro > 0 ? <span style={{ color: '#818cf8' }}>{fNum(row._giro, 1)}x</span> : <span style={{ color: '#4b5063' }}>-</span>}
+                  {row._giro > 0 ? <span style={{ color: '#818cf8' }}>{fNum(row._giro, 1)}x</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
                 </td>
                 <td style={{ textAlign: 'center' }}>{row._precoMedio > 0 ? fBRL(row._precoMedio) : '-'}</td>
               </tr>
@@ -408,7 +422,7 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
       </div>
 
       <div className="flex items-center justify-between px-1 mt-3">
-        <p className="text-xs" style={{ color: '#4b5063' }}>
+        <p className="text-xs" style={{ color: 'var(--text-dim)' }}>
           {total > 0
             ? `${(page * PAGE_LIMIT + 1).toLocaleString('pt-BR')}–${Math.min((page + 1) * PAGE_LIMIT, total).toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} produtos`
             : '0 produtos'}
@@ -416,13 +430,13 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
         <div className="flex items-center gap-2">
           <button onClick={() => onPage(p => Math.max(0, p - 1))} disabled={page === 0}
             className="px-3 py-1 rounded text-xs font-semibold"
-            style={{ background: '#1e2035', color: page === 0 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+            style={{ background: 'var(--bg-input)', color: page === 0 ? 'var(--text-dim)' : 'var(--text)', border: '1px solid var(--border2)' }}>
             ← Anterior
           </button>
-          <span className="text-xs" style={{ color: '#6b7280' }}>{page + 1} / {totalPages || 1}</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{page + 1} / {totalPages || 1}</span>
           <button onClick={() => onPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
             className="px-3 py-1 rounded text-xs font-semibold"
-            style={{ background: '#1e2035', color: page >= totalPages - 1 ? '#3a3f5c' : '#e8eaf0', border: '1px solid #2a2d40' }}>
+            style={{ background: 'var(--bg-input)', color: page >= totalPages - 1 ? 'var(--text-dim)' : 'var(--text)', border: '1px solid var(--border2)' }}>
             Próximo →
           </button>
         </div>
@@ -447,7 +461,7 @@ function TabelaGrupo({ rows, label, isFetching }) {
     const active = sortK === k
     return (
       <th onClick={() => { if (active) setSortD(d => d === 'asc' ? 'desc' : 'asc'); else { setSortK(k); setSortD('desc') } }}
-        style={{ textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', padding: '10px 12px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', top: 0, background: '#1a1c2a', zIndex: 10 }}>
+        style={{ textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', padding: '10px 12px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10 }}>
         <span style={{ color: active ? '#f5c518' : '#6b7280' }}>{l}{active ? (sortD === 'asc' ? ' ▲' : ' ▼') : ''}</span>
       </th>
     )
@@ -468,7 +482,7 @@ function TabelaGrupo({ rows, label, isFetching }) {
               <TH k="_taxaSaida"  l="Taxa Saída"   align="right" />
               <TH k="_dde"        l="DDE"          align="right" />
               <TH k="_giroMedio"  l="Giro"         align="right" />
-              <th style={{ whiteSpace: 'nowrap', padding: '10px 12px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#6b7280', position: 'sticky', top: 0, background: '#1a1c2a', zIndex: 10 }}>Ruptura</th>
+              <th style={{ whiteSpace: 'nowrap', padding: '10px 12px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10 }}>Ruptura</th>
               <TH k="_precoMedio" l="Preço Médio"  align="right" />
             </tr>
           </thead>
@@ -481,24 +495,24 @@ function TabelaGrupo({ rows, label, isFetching }) {
               const semVenda = (row._vend30 ?? 0) === 0 && (row._vendida ?? 0) === 0
               return (
                 <tr key={i}>
-                  <td style={{ fontWeight: 700, color: '#e8eaf0', whiteSpace: 'nowrap' }}>{row._key}</td>
-                  <td style={{ textAlign: 'right', color: '#6b7280', fontFamily: 'monospace' }}>{fNum(row._count)}</td>
+                  <td style={{ fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{row._key}</td>
+                  <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{fNum(row._count)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fNum(row._saldo)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace', color: '#00b4d8' }}>{fNum(row._saldoDisp)}</td>
                   <td style={{ textAlign: 'right', color: '#a3e635', fontWeight: 600 }}>{fBRL(row._valorEst)}</td>
                   <td style={{ textAlign: 'right' }}>
-                    {row._vend30 > 0 ? <span style={{ color: '#4ade80', fontWeight: 700 }}>{fNum(row._vend30)}</span> : <span style={{ color: '#4b5063' }}>—</span>}
+                    {row._vend30 > 0 ? <span style={{ color: '#4ade80', fontWeight: 700 }}>{fNum(row._vend30)}</span> : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    {row._taxaSaida > 0 ? <span style={{ color: '#4ade80' }}>{row._taxaSaida?.toFixed(1)}%</span> : <span style={{ color: '#4b5063' }}>—</span>}
+                    {row._taxaSaida > 0 ? <span style={{ color: '#4ade80' }}>{row._taxaSaida?.toFixed(1)}%</span> : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     {dde < 9999
                       ? <span style={{ color: dde < 30 ? '#f87171' : dde < 60 ? '#fb923c' : '#e8eaf0' }}>{fNum(dde)} d</span>
-                      : <span style={{ color: '#4b5063' }}>—</span>}
+                      : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    {row._giroMedio > 0 ? <span style={{ color: '#818cf8' }}>{fNum(row._giroMedio, 1)}x</span> : <span style={{ color: '#4b5063' }}>—</span>}
+                    {row._giroMedio > 0 ? <span style={{ color: '#818cf8' }}>{fNum(row._giroMedio, 1)}x</span> : <span style={{ color: 'var(--text-dim)' }}>—</span>}
                   </td>
                   <td>
                     {semVenda
@@ -531,7 +545,7 @@ function FotoZoom({ url, alt }) {
       onMouseLeave={() => setPos(null)}
     >
       <img src={url} alt={alt} className="rounded object-cover flex-shrink-0"
-        style={{ width: 36, height: 36, background: '#20223a', display: 'block' }}
+        style={{ width: 36, height: 36, background: 'var(--bg-input)', display: 'block' }}
         onError={e => { e.target.style.display = 'none' }} />
       {pos && (
         <div className="foto-zoom-popup" style={{
@@ -547,7 +561,7 @@ function FotoZoom({ url, alt }) {
 
 function PlaceholderFoto() {
   return (
-    <div className="rounded flex items-center justify-center flex-shrink-0" style={{ width: 36, height: 36, background: '#20223a', color: '#3a3f5c' }}>
+    <div className="rounded flex items-center justify-center flex-shrink-0" style={{ width: 36, height: 36, background: 'var(--bg-input)', color: 'var(--text-dim)' }}>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
       </svg>
@@ -559,5 +573,5 @@ function RupturaBadge({ dde, saldo, vend30 }) {
   if (saldo === 0 && vend30 > 0) return <span className="badge badge-risco">RISCO</span>
   if (dde < 30 && dde < 9999)   return <span className="badge badge-alerta">ATENÇÃO</span>
   if (dde < 9999)                return <span className="badge badge-ok">OK</span>
-  return <span style={{ color: '#4b5063', fontSize: 12 }}>S/V</span>
+  return <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>S/V</span>
 }

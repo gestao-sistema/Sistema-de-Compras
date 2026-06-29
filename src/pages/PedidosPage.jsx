@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import FotoZoom from '../components/FotoZoom'
@@ -68,7 +68,7 @@ export default function PedidosPage() {
   const groupedVisiveis = grouped.slice(0, visivel)
 
   return (
-    <div className="page-body space-y-4" style={{ paddingTop: 16 }}>
+    <div className="page-body space-y-4">
 
       {/* KPIs */}
       <div className="flex gap-4">
@@ -82,15 +82,15 @@ export default function PedidosPage() {
       <div className="card">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Emissão — De</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Emissão — De</div>
             <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className="inp text-xs" style={{ width: 140 }} />
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Até</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Até</div>
             <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="inp text-xs" style={{ width: 140 }} />
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: '#6b7280' }}>Buscar</div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Buscar</div>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Fornecedor, código ou descrição…" className="inp text-xs" style={{ width: 220 }} />
           </div>
           {hasFilter && <button onClick={reset} className="btn-ghost text-xs self-end">✕ Limpar</button>}
@@ -121,16 +121,16 @@ export default function PedidosPage() {
                   <div onClick={() => toggleForn(f.nome)} style={{
                     cursor: 'pointer', padding: '14px 20px',
                     display: 'flex', alignItems: 'center', gap: 16,
-                    background: isFornOpen ? '#1a1c30' : '#181929',
+                    background: isFornOpen ? 'var(--bg-hover)' : 'var(--bg-card2)',
                   }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#1e2038'}
-                    onMouseLeave={e => e.currentTarget.style.background = isFornOpen ? '#1a1c30' : '#181929'}>
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                    onMouseLeave={e => e.currentTarget.style.background = isFornOpen ? 'var(--bg-hover)' : 'var(--bg-card2)'}>
 
                     <span style={{ color: '#f5c518', fontSize: 13, width: 14 }}>{isFornOpen ? '▼' : '▶'}</span>
 
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 800, fontSize: 15, color: '#e8eaf0' }}>{f.nome}</div>
-                      <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{f.nome}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
                         {f.pedidos.length} pedido{f.pedidos.length !== 1 ? 's' : ''} ·{' '}
                         {fNum(f.pedidos.reduce((s, p) => s + p.itens.length, 0))} itens pendentes
                       </div>
@@ -138,11 +138,11 @@ export default function PedidosPage() {
 
                     <div style={{ display: 'flex', gap: 32, flexShrink: 0 }}>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>Saldo</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Saldo</div>
                         <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#818cf8', fontSize: 14 }}>{fNum(totalFornSaldo)}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>Valor Total</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Valor Total</div>
                         <div style={{ fontFamily: 'monospace', fontWeight: 800, color: '#a3e635', fontSize: 14 }}>{fBRL(totalFornValor)}</div>
                       </div>
                     </div>
@@ -150,7 +150,7 @@ export default function PedidosPage() {
 
                   {/* Pedidos do fornecedor */}
                   {isFornOpen && (
-                    <div style={{ borderTop: '1px solid #22253a' }}>
+                    <div style={{ borderTop: '1px solid var(--border)' }}>
                       {f.pedidos.map(ped => {
                         const pedKey  = `${f.nome}::${ped.pedido}`
                         const isPedOpen = !!expandPed[pedKey]
@@ -163,16 +163,16 @@ export default function PedidosPage() {
                             <div onClick={() => togglePed(pedKey)} style={{
                               cursor: 'pointer', padding: '10px 20px 10px 36px',
                               display: 'flex', alignItems: 'center', gap: 14,
-                              background: isPedOpen ? '#14162a' : '#141520',
-                              borderBottom: '1px solid #1e2038',
+                              background: isPedOpen ? 'var(--bg-card2)' : 'var(--bg-card)',
+                              borderBottom: '1px solid var(--border)',
                             }}
-                              onMouseEnter={e => e.currentTarget.style.background = '#1a1c32'}
-                              onMouseLeave={e => e.currentTarget.style.background = isPedOpen ? '#14162a' : '#141520'}>
+                              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                              onMouseLeave={e => e.currentTarget.style.background = isPedOpen ? 'var(--bg-card2)' : 'var(--bg-card)'}>
 
-                              <span style={{ color: '#9ca3af', fontSize: 11 }}>{isPedOpen ? '▼' : '▶'}</span>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{isPedOpen ? '▼' : '▶'}</span>
                               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#f5c518', fontSize: 13 }}>#{ped.pedido}</span>
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>{ped.emissao}</span>
-                              <span style={{ fontSize: 11, color: '#9ca3af' }}>{ped.itens.length} iten{ped.itens.length !== 1 ? 's' : ''}</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ped.emissao}</span>
+                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ped.itens.length} iten{ped.itens.length !== 1 ? 's' : ''}</span>
                               <div style={{ marginLeft: 'auto', display: 'flex', gap: 24 }}>
                                 <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#818cf8', fontWeight: 700 }}>{fNum(saldoTot)} un.</span>
                                 <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(valTot)}</span>
@@ -183,7 +183,7 @@ export default function PedidosPage() {
                             {isPedOpen && (
                               <table className="w-full" style={{ borderCollapse: 'collapse' }}>
                                 <thead>
-                                  <tr style={{ background: '#0f1020' }}>
+                                  <tr style={{ background: 'var(--bg-card2)' }}>
                                     <th style={th}>Foto</th>
                                     <th style={th}>Código</th>
                                     <th style={{ ...th, textAlign: 'left' }}>Descrição</th>
@@ -196,23 +196,23 @@ export default function PedidosPage() {
                                 </thead>
                                 <tbody>
                                   {ped.itens.map((it, i) => (
-                                    <tr key={i} style={{ background: i % 2 === 0 ? '#12131e' : '#141520', borderBottom: '1px solid #1a1c2e' }}>
+                                    <tr key={i} style={{ background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card2)', borderBottom: '1px solid var(--border)' }}>
                                       <td style={{ padding: '6px 10px', textAlign: 'center', width: 44 }}>
                                         <FotoZoom
                                           url={it.fotoUrl ? `/api/image-proxy?url=${encodeURIComponent(it.fotoUrl)}` : null}
                                           alt={it.descricao} size={32} />
                                       </td>
                                       <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: 11, color: '#f5c518', whiteSpace: 'nowrap' }}>{it.produto}</td>
-                                      <td style={{ padding: '6px 10px', fontSize: 12, color: '#d1d5db' }}>
+                                      <td style={{ padding: '6px 10px', fontSize: 12, color: 'var(--text)' }}>
                                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }} title={it.descricao}>{it.descricao}</div>
                                       </td>
                                       <td style={{ padding: '6px 10px', textAlign: 'center', fontSize: 11, color: '#00b4d8' }}>{it.grupo}</td>
                                       <td style={{ padding: '6px 10px', textAlign: 'center', fontSize: 11 }}>
-                                        <span style={{ background: '#0f1e30', border: '1px solid #1e3050', borderRadius: 4, padding: '2px 6px', color: '#60a5fa', fontSize: 10 }}>
+                                        <span style={{ background: 'var(--bg-input)', border: '1px solid var(--border2)', borderRadius: 4, padding: '2px 6px', color: '#60a5fa', fontSize: 10 }}>
                                           Almox {it.almox}
                                         </span>
                                       </td>
-                                      <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', color: '#e8eaf0' }}>{fNum(it.quantidade)}</td>
+                                      <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', color: 'var(--text)' }}>{fNum(it.quantidade)}</td>
                                       <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: '#818cf8' }}>{fNum(it.qtdSaldo)}</td>
                                       <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: '#a3e635' }}>{fBRL(it.valorTotal)}</td>
                                     </tr>
@@ -246,7 +246,7 @@ export default function PedidosPage() {
 function KPI({ label, value, color }) {
   return (
     <div className="card flex-1" style={{ borderLeft: `3px solid ${color}` }}>
-      <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: '#6b7280' }}>{label}</div>
+      <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 900, color, fontFamily: 'monospace' }}>{value}</div>
     </div>
   )
@@ -254,7 +254,7 @@ function KPI({ label, value, color }) {
 
 const th = {
   padding: '6px 10px', textAlign: 'center',
-  color: '#6b7280', fontSize: 10,
-  borderBottom: '1px solid #1e2038',
+  color: 'var(--text-muted)', fontSize: 10,
+  borderBottom: '1px solid var(--border)',
   fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
 }
