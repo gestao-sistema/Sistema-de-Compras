@@ -68,10 +68,10 @@ export function AuthProvider({ children }) {
       else setSession(null)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
       if (s) loadProfile(s.user.id)
-      else { setProfile(null); setPermSet(new Set()) }
+      else if (event === 'SIGNED_OUT') { setProfile(null); setPermSet(new Set()) }
     })
 
     return () => subscription.unsubscribe()

@@ -13,8 +13,8 @@ import LoginPage from './pages/LoginPage'
 
 function PrivateRoute({ children, chave }) {
   const { session, profile, podeVer, loading } = useAuth()
-  if (loading) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'#6b7280', fontSize:13 }}>Carregando…</div>
-  if (!session || !profile) return <Navigate to="/login" replace />
+  if (loading || (session && !profile)) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'#6b7280', fontSize:13 }}>Carregando…</div>
+  if (!session) return <Navigate to="/login" replace />
   if (!profile.ativo) return <Navigate to="/login" replace />
   if (chave && !podeVer(chave)) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:8 }}>
