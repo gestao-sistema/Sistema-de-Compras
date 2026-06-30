@@ -394,7 +394,7 @@ function TodosProdutos({ produtos, sortBy }) {
         <tbody>
           {visivel.map((p, i) => {
             const mgColor = p.margem >= 50 ? '#a3e635' : p.margem >= 30 ? '#f5c518' : '#f87171'
-            const isTop7  = i < (globalLabel ? 12 : 6)
+            const isTop7  = i < 6
             return (
               <tr key={p.produto} style={{
                 background: isTop7
