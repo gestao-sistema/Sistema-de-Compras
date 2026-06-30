@@ -20,7 +20,7 @@ export default function LoginPage() {
   const [resetEmail,  setResetEmail]  = useState('')
   const [resetMsg,    setResetMsg]    = useState('')
   const [resetLoading,setResetLoading]= useState(false)
-  const [forcePwd,    setForcePwd]    = useState(false)
+  const [forcePwd,    setForcePwd]    = useState(() => window.location.hash.includes('type=recovery'))
 
   useEffect(() => {
     if (!session) return
@@ -83,8 +83,10 @@ export default function LoginPage() {
     navigate('/', { replace: true })
   }
 
+  const isRecovery = window.location.hash.includes('type=recovery')
   if (forcePwd) return (
     <ForceChangeScreen
+      isReset={isRecovery}
       onSave={async (novaSenha) => {
         const { error } = await supabase.auth.updateUser({ password: novaSenha })
         if (error) throw error
@@ -384,7 +386,7 @@ function LoginScreen({ email, setEmail, senha, setSenha, showPass, setShowPass, 
 }
 
 // ─── Troca de senha obrigatória ───────────────────────────────────────────────
-function ForceChangeScreen({ onSave }) {
+function ForceChangeScreen({ onSave, isReset = false }) {
   const [nova,      setNova]      = useState('')
   const [confirma,  setConfirma]  = useState('')
   const [showNova,  setShowNova]  = useState(false)
@@ -424,11 +426,12 @@ function ForceChangeScreen({ onSave }) {
             <div style={{ textAlign:'center', marginBottom:32 }}>
               <div style={{ fontSize:32, marginBottom:12 }}>🔐</div>
               <div style={{ fontSize:13, fontWeight:800, letterSpacing:'0.4em', color:'rgba(212,175,55,0.8)', textTransform:'uppercase', marginBottom:10 }}>
-                Primeiro acesso
+                {isReset ? 'Redefinir senha' : 'Primeiro acesso'}
               </div>
               <div style={{ fontSize:13, color:'rgba(255,255,255,0.45)', lineHeight:1.7 }}>
-                Você entrou com uma senha temporária.<br />
-                Crie uma senha pessoal para continuar.
+                {isReset
+                  ? 'Digite sua nova senha para recuperar o acesso.'
+                  : <>Você entrou com uma senha temporária.<br />Crie uma senha pessoal para continuar.</>}
               </div>
             </div>
 
