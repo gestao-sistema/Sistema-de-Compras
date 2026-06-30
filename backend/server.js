@@ -430,6 +430,7 @@ async function buildPedidosItens() {
   return itens
 }
 
+
 // Pré-aquece pedidos + fornecedores no background
 async function warmPedidosForn() {
   try {
@@ -656,7 +657,7 @@ app.get('/api/fornecedores', async (req, res) => {
     }
 
     // Com filtros → recalcula em cima dos dados já cacheados
-    const prods       = await getProdutos()
+    const prods        = await getProdutos()
     const pedidosItens = await buildPedidosItens()
     const result = _computeFornecedores(prods, pedidosItens, dataInicio, dataFim, fornFiltro)
     res.json(result)
@@ -1060,17 +1061,35 @@ app.get('/api/blip/assistencia/itens/:id', async (req, res) => {
 app.get('/api/alertas', async (req, res) => {
   try {
     if (!warmState.done) return res.json({ loading: true, ruptura: [], risco: [] })
-    const all = await getProdutos()
+    const [all, pedItens] = await Promise.all([getProdutos(), buildPedidosItens()])
+
+    // mapa produto → saldo pendente em pedidos de compra
+    const pedSaldo = {}
+    pedItens.forEach(it => {
+      pedSaldo[it.produto] = (pedSaldo[it.produto] || 0) + (it.qtdSaldo || 0)
+    })
+
+    // se o saldo de pedidos cobre >= 30 dias de vendas, produto não precisa de alerta
+    function cobertoPorPedido(i) {
+      const saldoPed = pedSaldo[i.produto] || 0
+      if (saldoPed <= 0) return false
+      const vendaDia = (i._vend30 ?? 0) / 30
+      if (vendaDia <= 0) return false
+      return saldoPed / vendaDia >= 30
+    }
+
     const ruptura = all
-      .filter(i => i._saldo === 0 && (i._vend30 ?? 0) > 0)
+      .filter(i => i._saldo === 0 && (i._vend30 ?? 0) > 0 && !cobertoPorPedido(i))
       .sort((a, b) => (b._vend30 ?? 0) - (a._vend30 ?? 0))
       .slice(0, 50)
       .map(i => ({ produto: i.produto, descricao: i.descricao, grupo: i.grupo, vend30: i._vend30, foto: i._foto, nomeFornecedor: i.nomeFornecedor }))
+
     const risco = all
-      .filter(i => i._saldo > 0 && (i._dde ?? 9999) < 30 && (i._dde ?? 9999) < 9999 && (i._vend90 ?? 0) > 0)
+      .filter(i => i._saldo > 0 && (i._dde ?? 9999) < 30 && (i._dde ?? 9999) < 9999 && (i._vend90 ?? 0) > 0 && !cobertoPorPedido(i))
       .sort((a, b) => (a._dde ?? 9999) - (b._dde ?? 9999))
       .slice(0, 30)
       .map(i => ({ produto: i.produto, descricao: i.descricao, grupo: i.grupo, dde: i._dde, saldo: i._saldo, vend30: i._vend30, foto: i._foto, nomeFornecedor: i.nomeFornecedor }))
+
     res.json({ loading: false, ruptura, risco })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })

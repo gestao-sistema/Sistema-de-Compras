@@ -75,9 +75,9 @@ export default function FornecedorPage() {
     return fornFiltered.filter(f => f.produtos.some(p => hasProd.has(p.produto)))
   }, [fornFiltered, kpiProdutos])
 
-  const totVendida = kpiProdutos.reduce((s, p) => s + (p.vendida  || 0), 0)
-  const totCusto   = kpiProdutos.reduce((s, p) => s + (p.custoVendas || 0), 0)
-  const totVenda   = kpiProdutos.reduce((s, p) => s + (p.vendaReal  || 0), 0)
+  const totVendida = kpiProdutos.reduce((s, p) => s + (p.vendida      || 0), 0)
+  const totCusto   = kpiProdutos.reduce((s, p) => s + (p.custoVendas  || 0), 0)
+  const totVenda   = kpiProdutos.reduce((s, p) => s + (p.vendaReal    || 0), 0)
   const totLucro   = totVenda - totCusto
   const totMargem  = totVenda > 0 ? (totLucro / totVenda) * 100 : 0
 
@@ -86,11 +86,11 @@ export default function FornecedorPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-5 gap-3">
-        <KPI label="Fornecedores"   value={fNum(fornComProdutos.length)} color="#f5c518" />
-        <KPI label="Peças Vendidas" value={fNum(totVendida)}             color="#00b4d8" />
-        <KPI label="Custo Total"    value={fBRL(totCusto)}               color="#f87171" />
-        <KPI label="Venda"          value={fBRL(totVenda)}               color="#a3e635" />
-        <KPI label={`Lucro (${totMargem.toFixed(1)}%)`} value={fBRL(totLucro)} color="#818cf8" />
+        <KPI label="Fornecedores"                       value={fNum(fornComProdutos.length)} color="#f5c518" sub="Total histórico" />
+        <KPI label="Peças Vendidas"                     value={fNum(totVendida)}             color="#00b4d8" sub="Total histórico" />
+        <KPI label="Custo Total"                        value={fBRL(totCusto)}               color="#f87171" sub="Total histórico" />
+        <KPI label="Venda"                              value={fBRL(totVenda)}               color="#a3e635" sub="Total histórico" />
+        <KPI label={`Lucro (${totMargem.toFixed(1)}%)`} value={fBRL(totLucro)}              color="#818cf8" sub="Total histórico" />
       </div>
 
       {/* Filtros + Classificação */}
@@ -287,10 +287,11 @@ const TOP5_SORT  = {
 }
 
 function Top7Vendidos({ produtos, sortBy = 'vendidas', globalLabel = false }) {
+  const limit = globalLabel ? 12 : 6
   const top7 = [...produtos]
     .filter(p => (p.vendida > 0 || p.lucro > 0) && p.custo > 0)
     .sort(TOP5_SORT[sortBy] || TOP5_SORT.vendidas)
-    .slice(0, 7)
+    .slice(0, limit)
 
   if (top7.length === 0) return null
 
@@ -298,14 +299,14 @@ function Top7Vendidos({ produtos, sortBy = 'vendidas', globalLabel = false }) {
     <div style={{ background: 'var(--bg-card2)', borderBottom: '2px solid #f5c51830', padding: '12px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: '#f5c518', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          ★ {globalLabel ? `🌐 Geral — ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}` : (TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas)}
+          ★ {globalLabel ? `🌐 Geral — Top 12 ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}` : `Top 6 ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}`}
         </span>
         <div style={{ flex: 1, height: 1, background: '#f5c51830' }} />
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
         {top7.map((p, i) => {
           const mgColor  = p.margem >= 50 ? '#a3e635' : p.margem >= 30 ? '#f5c518' : '#f87171'
-          const medals   = ['🥇', '🥈', '🥉', '4°', '5°', '6°', '7°']
+          const medals   = ['🥇', '🥈', '🥉', '4°', '5°', '6°', '7°', '8°', '9°', '10°', '11°', '12°']
           return (
             <div key={p.produto} style={{
               flex: '1 1 180px', minWidth: 170, maxWidth: 220,
@@ -393,7 +394,7 @@ function TodosProdutos({ produtos, sortBy }) {
         <tbody>
           {visivel.map((p, i) => {
             const mgColor = p.margem >= 50 ? '#a3e635' : p.margem >= 30 ? '#f5c518' : '#f87171'
-            const isTop7  = i < 7
+            const isTop7  = i < (globalLabel ? 12 : 6)
             return (
               <tr key={p.produto} style={{
                 background: isTop7
@@ -530,11 +531,12 @@ function DuplicadosTab({ duplicados, allFornNames }) {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-function KPI({ label, value, color }) {
+function KPI({ label, value, color, sub }) {
   return (
     <div className="card" style={{ borderLeft: `3px solid ${color}` }}>
       <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 900, color, fontFamily: 'monospace' }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>}
     </div>
   )
 }

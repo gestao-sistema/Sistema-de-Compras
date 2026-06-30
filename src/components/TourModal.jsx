@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+﻿import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 export const TOUR_KEY = 'sistema_tour_visto_v1'
@@ -26,8 +26,10 @@ const PASSOS = [
       '📊 Margem  →  % de lucro sobre o preço de venda (ex: 60%)',
       '📅 DDE  →  quantos dias o estoque atual vai durar',
       '🔄 Giro  →  velocidade de saída: vendas 90d ÷ saldo médio',
+      '📉 Taxa de Saída  →  % do estoque vendido no período: Vendas ÷ (Saldo + Vendas) × 100',
       '🔴 Ruptura  →  saldo zerado mas produto ainda sendo vendido',
       '🟠 Risco  →  estoque positivo mas acabando em menos de 30 dias',
+      '🏆 Curva ABC  →  A = top 80% do faturamento · B = próximos 15% · C = últimos 5%',
     ],
     Preview: PreviewCalculos,
   },
@@ -38,7 +40,13 @@ const PASSOS = [
     descricao: 'Painel principal com os principais indicadores de desempenho atualizados automaticamente a cada 30 minutos.',
     cor: '#f5c518',
     rota: '/',
-    itens: ['Faturamento dos últimos 30 e 90 dias', 'Total de produtos no catálogo', 'Estoque disponível em valor (R$)', 'Produtos mais vendidos em destaque'],
+    itens: [
+      'Saldo atual e saldo disponível em estoque',
+      'Valor total em estoque e custo médio dos produtos',
+      'Vendas 30 dias com comparativo ao período anterior',
+      'Unidades vendidas nos últimos 30 dias',
+      'Produtos detalhados com foto, preço e movimentação',
+    ],
     Preview: PreviewDashboard,
   },
   {
@@ -48,7 +56,13 @@ const PASSOS = [
     descricao: 'Classifica automaticamente todos os produtos em A, B e C com base em faturamento, unidades vendidas ou valor de estoque.',
     cor: '#00b4d8',
     rota: '/sugestoes',
-    itens: ['Classe A — 80% do resultado (produtos prioritários)', 'Classe B — próximos 15%', 'Classe C — últimos 5%', 'Filtros por grupo, fornecedor e categoria'],
+    itens: [
+      '3 tipos de curva: Faturamento · Unidades Vendidas · Estoque',
+      'Classe A — top 80% do resultado (produtos prioritários)',
+      'Classe B — próximos 15%  ·  Classe C — últimos 5%',
+      'Clique nas letras A, B ou C para filtrar só aquela classe',
+      'Filtros por categoria, grupo e fornecedor em cada curva',
+    ],
     Preview: PreviewABC,
   },
   {
@@ -58,7 +72,14 @@ const PASSOS = [
     descricao: 'Acesse o catálogo completo com fotos, preços, estoque e histórico de vendas de todos os produtos.',
     cor: '#a78bfa',
     rota: '/compras',
-    itens: ['Busca por código, descrição ou grupo', 'Foto ampliada ao passar o mouse', 'Saldo, disponível e preço unitário', 'Exportação em Excel e Word'],
+    itens: [
+      'Busca por código, descrição ou grupo · foto ampliada ao passar o mouse',
+      'Saldo atual, disponível, preço unitário e custo médio',
+      'Sugestão de compra com cobertura desejada de 45 a 90 dias',
+      '🔴 Destaca produtos em Ruptura — saldo zerado ainda vendendo',
+      '🟠 Destaca produtos em Risco — estoque acabando em menos de 30 dias',
+      'Exportação em Excel e Word com todos os dados filtrados',
+    ],
     Preview: PreviewCompras,
   },
   {
@@ -70,6 +91,22 @@ const PASSOS = [
     rota: '/pedidos',
     itens: ['Lista de pedidos por fornecedor', 'Itens com quantidades e saldo pendente', 'Filtros por fornecedor e período', 'Valor total por pedido'],
     Preview: PreviewPedidos,
+  },
+  {
+    emoji: '🔔',
+    titulo: 'Alertas de Estoque',
+    subtitulo: 'Produtos que precisam de atenção',
+    descricao: 'O sino na barra lateral acende automaticamente quando há produtos em situação crítica de estoque.',
+    cor: '#f87171',
+    rota: null,
+    itens: [
+      '🔴 Ruptura — saldo zerado mas produto ainda sendo vendido nos últimos 30 dias',
+      '🟠 Risco — estoque positivo mas com menos de 30 dias de cobertura (DDE < 30)',
+      '✅ Produto com pedido de compra pendente cobrindo ≥ 30 dias não aparece no alerta',
+      'Ordenado pelo mais crítico: Ruptura com maior volume de vendas primeiro',
+      'Clique no alerta para ver foto, fornecedor e volume de vendas do produto',
+    ],
+    Preview: PreviewAlertas,
   },
   {
     emoji: '🚚',
@@ -271,14 +308,66 @@ export default function TourModal({ onClose }) {
 
 // ─── Previews ────────────────────────────────────────────────────────────────
 
+function PreviewAlertas({ cor }) {
+  const [aba, setAba] = React.useState('ruptura')
+  const ruptura = [
+    { desc: 'COLAR RIVIERA 3MM',   grupo: 'CORRENTE',  vend: 42, comPedido: false },
+    { desc: 'ANEL SOLITÁRIO 18K',  grupo: 'ANEL',      vend: 18, comPedido: true  },
+    { desc: 'BRINCO ARGOLA OURO',  grupo: 'BRINCO',    vend: 11, comPedido: false },
+  ]
+  const risco = [
+    { desc: 'PULSEIRA RIVIERA 4G', grupo: 'PULSEIRA',  dde: 8,  saldo: 12, comPedido: false },
+    { desc: 'PINGENTE CORAÇÃO',    grupo: 'PINGENTE',  dde: 14, saldo: 5,  comPedido: true  },
+    { desc: 'RIVIERA REDONDA 2MM', grupo: 'CORRENTE',  dde: 22, saldo: 30, comPedido: false },
+  ]
+  const lista = aba === 'ruptura' ? ruptura : risco
+  return (
+    <div style={{ width: '100%' }}>
+      {/* Botão sino */}
+      <div style={{ background: '#2d0a0a', borderRadius: 8, padding: '7px 12px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #f8717144' }}>
+        <span style={{ fontSize: 16 }}>🔔</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#f87171', flex: 1 }}>5 alertas ativos</span>
+        <span style={{ background: '#f87171', color: '#fff', borderRadius: '50%', width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>5</span>
+      </div>
+      {/* Abas */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 8, background: '#0d0f1a', borderRadius: 6, padding: 3 }}>
+        {[{ id: 'ruptura', label: 'Ruptura (2)', cor: '#f87171' }, { id: 'risco', label: 'Risco (3)', cor: '#fb923c' }].map(a => (
+          <div key={a.id} onClick={() => setAba(a.id)} style={{ flex: 1, textAlign: 'center', padding: '4px 0', borderRadius: 4, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: aba === a.id ? `${a.cor}22` : 'transparent', color: aba === a.id ? a.cor : '#6b7280', borderBottom: aba === a.id ? `2px solid ${a.cor}` : '2px solid transparent' }}>{a.label}</div>
+        ))}
+      </div>
+      {/* Lista */}
+      <div style={{ background: '#12131e', borderRadius: 8, overflow: 'hidden', border: '1px solid #1e2035' }}>
+        {lista.map((p, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid #1a1c2a', opacity: p.comPedido ? 0.35 : 1 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 6, background: '#20223a', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>{aba === 'ruptura' ? '📦' : '⚠️'}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: p.comPedido ? '#4b5063' : '#c4c9d8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.desc}</div>
+              <div style={{ fontSize: 9, color: '#6b7280' }}>{p.grupo} {p.comPedido ? '· ✅ pedido cobre 30d' : ''}</div>
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              {aba === 'ruptura'
+                ? <div style={{ fontSize: 10, fontWeight: 800, color: '#f87171', background: '#7f1d1d', padding: '2px 6px', borderRadius: 4 }}>{p.vend}/30d</div>
+                : <div style={{ fontSize: 10, fontWeight: 800, color: '#fb923c', background: '#7c2d12', padding: '2px 6px', borderRadius: 4 }}>{p.dde}d</div>
+              }
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 9, color: '#4b5063', marginTop: 6, textAlign: 'center' }}>Itens esmaecidos têm pedido de compra pendente</div>
+    </div>
+  )
+}
+
 function PreviewCalculos({ cor }) {
   const items = [
-    { nome: 'MARKUP',  formula: 'Preço ÷ Custo',             ex: '2,50x',   cor: '#a78bfa', icon: '💰' },
-    { nome: 'MARGEM',  formula: '(Preço−Custo) ÷ Preço',     ex: '60%',     cor: '#f5c518', icon: '📊' },
-    { nome: 'DDE',     formula: 'Saldo ÷ Venda/dia',         ex: '30 dias', cor: '#00b4d8', icon: '📅' },
-    { nome: 'GIRO',    formula: 'Vendas 90d ÷ Saldo',        ex: '3,2x',    cor: '#4ade80', icon: '🔄' },
-    { nome: 'RUPTURA', formula: 'Saldo=0 + Venda30d>0',      ex: '⚠️ crítico', cor: '#f87171', icon: '🔴' },
-    { nome: 'RISCO',   formula: 'Saldo>0 + DDE<30d',         ex: '⚡ urgente', cor: '#fb923c', icon: '🟠' },
+    { nome: 'MARKUP',      formula: 'Preço ÷ Custo',                  ex: '2,50x',    cor: '#a78bfa', icon: '💰' },
+    { nome: 'MARGEM',      formula: '(Preço−Custo) ÷ Preço',          ex: '60%',      cor: '#f5c518', icon: '📊' },
+    { nome: 'DDE',         formula: 'Saldo ÷ Venda/dia',              ex: '30 dias',  cor: '#00b4d8', icon: '📅' },
+    { nome: 'GIRO',        formula: 'Vendas 90d ÷ Saldo',             ex: '3,2x',     cor: '#4ade80', icon: '🔄' },
+    { nome: 'TX. SAÍDA',   formula: 'Vendas ÷ (Saldo+Vendas) × 100', ex: '68%',      cor: '#38bdf8', icon: '📉' },
+    { nome: 'RUPTURA',     formula: 'Saldo=0 + Venda30d>0',           ex: '⚠️ crítico', cor: '#f87171', icon: '🔴' },
+    { nome: 'RISCO',       formula: 'Saldo>0 + DDE<30d',              ex: '⚡ urgente', cor: '#fb923c', icon: '🟠' },
+    { nome: 'CURVA ABC',   formula: 'A=80% fat · B=15% · C=5%',       ex: 'A/B/C',    cor: '#a3e635', icon: '🏆' },
   ]
   return (
     <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:6 }}>
@@ -315,27 +404,31 @@ function PreviewBemVindo({ cor }) {
 }
 
 function PreviewDashboard({ cor }) {
-  const kpis = [{ l:'Faturamento 30D', v:'R$ 284k', c:'#f5c518' }, { l:'Produtos', v:'54.381', c:'#00b4d8' }, { l:'Estoque', v:'R$ 1,2M', c:'#4ade80' }]
+  const kpis = [
+    { l:'Saldo Atual',    v:'8.432 un',   c:'#00b4d8' },
+    { l:'Saldo Disp.',    v:'7.910 un',   c:'#38bdf8' },
+    { l:'Valor Estoque',  v:'R$ 1,2M',    c:'#4ade80' },
+    { l:'Custo Médio',    v:'R$ 22,40',   c:'#a78bfa' },
+    { l:'Vendas 30D',     v:'R$ 284k',    c:'#f5c518' },
+    { l:'Período Ant.',   v:'R$ 261k',    c:'#fb923c' },
+    { l:'Unid. Vendidas', v:'12.847 un',  c:'#f472b6' },
+  ]
   return (
     <div style={{ width:'100%' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, marginBottom:6 }}>
-        {kpis.slice(0,2).map((k,i) => (
-          <div key={i} style={{ background:'#12131e', borderRadius:8, padding:'8px 10px', border:`1px solid ${k.c}33` }}>
-            <div style={{ fontSize:11, color:'#c4c9d8', marginBottom:3, fontWeight:500 }}>{k.l}</div>
-            <div style={{ fontSize:16, fontWeight:800, color:k.c }}>{k.v}</div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginBottom:6 }}>
+        {kpis.map((k,i) => (
+          <div key={i} style={{ background:'#12131e', borderRadius:7, padding:'6px 9px', border:`1px solid ${k.c}28` }}>
+            <div style={{ fontSize:10, color:'#a8b0cc', marginBottom:2, fontWeight:500 }}>{k.l}</div>
+            <div style={{ fontSize:13, fontWeight:800, color:k.c }}>{k.v}</div>
           </div>
         ))}
-      </div>
-      <div style={{ background:'#12131e', borderRadius:8, padding:'8px 10px', border:'1px solid #4ade8033', marginBottom:6 }}>
-        <div style={{ fontSize:11, color:'#c4c9d8', marginBottom:3, fontWeight:500 }}>Estoque</div>
-        <div style={{ fontSize:16, fontWeight:800, color:'#4ade80' }}>R$ 1,2M</div>
-      </div>
-      <div style={{ background:'#12131e', borderRadius:8, padding:10, border:'1px solid #1e2035' }}>
-        <div style={{ fontSize:11, color:'#c4c9d8', marginBottom:8, fontWeight:500 }}>Vendas 30 dias</div>
-        <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:40 }}>
-          {[70,90,55,80,100,65,85].map((h,i) => (
-            <div key={i} style={{ flex:1, height:`${h}%`, background:`${cor}${60+i*10}`, borderRadius:3 }} />
-          ))}
+        <div style={{ background:'#12131e', borderRadius:7, padding:'6px 9px', border:'1px solid #1e2035', display:'flex', flexDirection:'column', justifyContent:'center' }}>
+          <div style={{ fontSize:10, color:'#a8b0cc', marginBottom:4 }}>Vendas 30 dias</div>
+          <div style={{ display:'flex', alignItems:'flex-end', gap:2, height:24 }}>
+            {[70,90,55,80,100,65,85].map((h,i) => (
+              <div key={i} style={{ flex:1, height:`${h}%`, background:`${cor}99`, borderRadius:2 }} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -343,22 +436,51 @@ function PreviewDashboard({ cor }) {
 }
 
 function PreviewABC({ cor }) {
-  const rows = [{ abc:'A', c:'#4ade80', desc:'RIVIERA 3MM...', s:9 }, { abc:'A', c:'#4ade80', desc:'COLAR RIVIERA...', s:14 }, { abc:'B', c:'#fb923c', desc:'ANEL SOLITÁRIO...', s:4 }, { abc:'C', c:'#f87171', desc:'PINGENTE...', s:2 }]
+  const [ativo, setAtivo] = React.useState(null)
+  const cores = { A:'#4ade80', B:'#fb923c', C:'#f87171' }
+  const tipos = ['Faturamento','Unid. Vendidas','Estoque']
+  const [tipoIdx, setTipoIdx] = React.useState(0)
+  const rows = [
+    { abc:'A', desc:'RIVIERA 3MM ZIRCÔNIA', v:'R$ 48k' },
+    { abc:'A', desc:'COLAR RIVIERA OURO',   v:'R$ 31k' },
+    { abc:'B', desc:'ANEL SOLITÁRIO 18K',   v:'R$ 12k' },
+    { abc:'C', desc:'PINGENTE CORAÇÃO',     v:'R$ 2k'  },
+  ].filter(r => ativo === null || r.abc === ativo)
   return (
     <div style={{ width:'100%' }}>
-      <div style={{ display:'flex', gap:4, marginBottom:6 }}>
-        {['A 1.640','B 1.974','C 50.767'].map((l,i) => (
-          <div key={i} style={{ flex:1, textAlign:'center', padding:'3px 0', borderRadius:4, fontSize:8, fontWeight:700, background:['#14532d','#7c2d12','#7f1d1d'][i], color:['#4ade80','#fb923c','#f87171'][i] }}>{l}</div>
+      {/* Seletor de tipo de curva */}
+      <div style={{ display:'flex', gap:4, marginBottom:6, background:'#0d0f1a', borderRadius:6, padding:3 }}>
+        {tipos.map((t,i) => (
+          <div key={i} onClick={() => setTipoIdx(i)} style={{
+            flex:1, textAlign:'center', padding:'4px 0', borderRadius:4, fontSize:10, fontWeight:700, cursor:'pointer',
+            background: tipoIdx===i ? cor : 'transparent',
+            color: tipoIdx===i ? '#0d0e16' : '#8b93b0',
+          }}>{t}</div>
         ))}
       </div>
+      {/* Filtros A B C */}
+      <div style={{ display:'flex', gap:4, marginBottom:6 }}>
+        {['A','B','C'].map(l => (
+          <div key={l} onClick={() => setAtivo(a => a===l ? null : l)} style={{
+            flex:1, textAlign:'center', padding:'5px 0', borderRadius:5, fontSize:11, fontWeight:800, cursor:'pointer',
+            background: ativo===l ? `${cores[l]}22` : '#12131e',
+            color: cores[l],
+            border: `1px solid ${ativo===l ? cores[l] : cores[l]+'33'}`,
+            boxShadow: ativo===l ? `0 0 8px ${cores[l]}44` : 'none',
+          }}>{l}</div>
+        ))}
+      </div>
+      {/* Lista de produtos */}
       <div style={{ background:'#12131e', borderRadius:6, overflow:'hidden', border:'1px solid #1e2035' }}>
         {rows.map((r,i) => (
-          <div key={i} style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px', borderBottom:'1px solid #1a1c2a' }}>
-            <div style={{ width:16, height:16, borderRadius:3, background:'#20223a', flexShrink:0 }} />
-            <div style={{ flex:1, fontSize:11, color:'#c4c9d8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.desc}</div>
-            <div style={{ fontSize:11, fontWeight:800, color:r.c, background:`${r.c}18`, padding:'2px 6px', borderRadius:3 }}>{r.abc}</div>
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 8px', borderBottom:'1px solid #1a1c2a' }}>
+            <div style={{ width:5, height:5, borderRadius:'50%', background:cores[r.abc], flexShrink:0 }} />
+            <div style={{ flex:1, fontSize:10, color:'#c4c9d8', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.desc}</div>
+            <div style={{ fontSize:10, fontWeight:800, color:cores[r.abc] }}>{r.v}</div>
+            <div style={{ fontSize:10, fontWeight:800, color:cores[r.abc], background:`${cores[r.abc]}18`, padding:'1px 6px', borderRadius:3 }}>{r.abc}</div>
           </div>
         ))}
+        {rows.length === 0 && <div style={{ padding:'10px', fontSize:10, color:'#6b7280', textAlign:'center' }}>Nenhum produto nesta classe</div>}
       </div>
     </div>
   )
@@ -367,18 +489,35 @@ function PreviewABC({ cor }) {
 function PreviewCompras({ cor }) {
   return (
     <div style={{ width:'100%' }}>
-      <div style={{ background:'#12131e', borderRadius:6, padding:6, marginBottom:6, border:'1px solid #1e2035', display:'flex', gap:4 }}>
-        <div style={{ flex:1, background:'#0d0f1a', borderRadius:4, height:18, border:'1px solid #2a2d40' }} />
-        <div style={{ width:40, background:`${cor}22`, borderRadius:4, height:18, border:`1px solid ${cor}33` }} />
+      {/* Barra de busca */}
+      <div style={{ background:'#12131e', borderRadius:6, padding:'5px 8px', marginBottom:6, border:'1px solid #1e2035', display:'flex', gap:6, alignItems:'center' }}>
+        <div style={{ flex:1, background:'#0d0f1a', borderRadius:4, height:16, border:'1px solid #2a2d40' }} />
+        <div style={{ fontSize:9, color:cor, fontWeight:700, background:`${cor}18`, padding:'2px 8px', borderRadius:4, border:`1px solid ${cor}33`, whiteSpace:'nowrap' }}>Excel</div>
       </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4 }}>
-        {[1,2,3,4].map(i => (
-          <div key={i} style={{ background:'#12131e', borderRadius:6, padding:6, border:'1px solid #1e2035' }}>
-            <div style={{ width:'100%', height:40, background:'#20223a', borderRadius:4, marginBottom:4, display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <span style={{ fontSize:16 }}>💎</span>
+      {/* Cobertura desejada */}
+      <div style={{ background:'#12131e', borderRadius:6, padding:'5px 10px', marginBottom:6, border:`1px solid ${cor}33`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span style={{ fontSize:10, color:'#c4c9d8' }}>Cobertura desejada</span>
+        <div style={{ display:'flex', gap:4 }}>
+          {['45d','60d','90d'].map((d,i) => (
+            <div key={d} style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4, background: i===1 ? cor : `${cor}18`, color: i===1 ? '#0d0e16' : cor }}>{d}</div>
+          ))}
+        </div>
+      </div>
+      {/* Cards de produto */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5 }}>
+        {[
+          { icon:'💎', nome:'RIVIERA 3MM', badge:null },
+          { icon:'💍', nome:'ANEL OURO 18K', badge:'RUPTURA' },
+          { icon:'📿', nome:'COLAR RIVIERA', badge:'RISCO' },
+          { icon:'✨', nome:'BRINCO ZIRCÔNIA', badge:null },
+        ].map((p,i) => (
+          <div key={i} style={{ background:'#12131e', borderRadius:6, padding:6, border:`1px solid ${p.badge==='RUPTURA' ? '#f8717133' : p.badge==='RISCO' ? '#fb923c33' : '#1e2035'}` }}>
+            <div style={{ width:'100%', height:34, background:'#20223a', borderRadius:4, marginBottom:4, display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
+              <span style={{ fontSize:14 }}>{p.icon}</span>
+              {p.badge && <div style={{ position:'absolute', top:2, right:2, fontSize:7, fontWeight:800, padding:'1px 4px', borderRadius:3, background: p.badge==='RUPTURA' ? '#7f1d1d' : '#7c2d12', color: p.badge==='RUPTURA' ? '#f87171' : '#fb923c' }}>{p.badge}</div>}
             </div>
-            <div style={{ height:6, background:'#1e2035', borderRadius:3, marginBottom:3 }} />
-            <div style={{ height:6, background:`${cor}33`, borderRadius:3, width:'60%' }} />
+            <div style={{ fontSize:9, color:'#c4c9d8', fontWeight:600, marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.nome}</div>
+            <div style={{ height:4, background:`${cor}33`, borderRadius:2, width:'70%' }} />
           </div>
         ))}
       </div>
