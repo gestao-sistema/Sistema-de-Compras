@@ -20,11 +20,12 @@ export default function LoginPage() {
   const [resetEmail,  setResetEmail]  = useState('')
   const [resetMsg,    setResetMsg]    = useState('')
   const [resetLoading,setResetLoading]= useState(false)
+  const [forcePwd,    setForcePwd]    = useState(false)
 
   useEffect(() => {
     if (!session) return
+    if (forcePwd) return // aguarda troca de senha antes de navegar
     if (!profile) {
-      // Se tem sessão mas sem profile após 5s, algo errou
       const t = setTimeout(() => {
         if (!profile) setError('Erro ao carregar perfil. Tente novamente.')
         setLoading(false)
@@ -34,7 +35,7 @@ export default function LoginPage() {
     if (!profile.ativo) { setError('Conta bloqueada. Contate o administrador.'); setLoading(false); return }
     if (profile.empresa === 'ambas') setStep('select')
     else navigate('/', { replace: true })
-  }, [session, profile])
+  }, [session, profile, forcePwd])
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -50,6 +51,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(emailNorm, senha)
+      if (senha === 'AZIME2026') setForcePwd(true)
     } catch {
       setError('E-mail ou senha incorretos.')
       setShake(true); setTimeout(() => setShake(false), 600)
@@ -80,6 +82,16 @@ export default function LoginPage() {
     if (c === 'novitah') return
     navigate('/', { replace: true })
   }
+
+  if (forcePwd) return (
+    <ForceChangeScreen
+      onSave={async (novaSenha) => {
+        const { error } = await supabase.auth.updateUser({ password: novaSenha })
+        if (error) throw error
+        setForcePwd(false)
+      }}
+    />
+  )
 
   if (step === 'select') return <SelectScreen onSelect={selectCompany} />
 
@@ -366,6 +378,103 @@ function LoginScreen({ email, setEmail, senha, setSenha, showPass, setShowPass, 
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Troca de senha obrigatória ───────────────────────────────────────────────
+function ForceChangeScreen({ onSave }) {
+  const [nova,      setNova]      = useState('')
+  const [confirma,  setConfirma]  = useState('')
+  const [showNova,  setShowNova]  = useState(false)
+  const [showConf,  setShowConf]  = useState(false)
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState('')
+  const [ok,        setOk]        = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setError('')
+    if (nova.length < 6)           return setError('A senha deve ter pelo menos 6 caracteres.')
+    if (nova === 'AZIME2026')      return setError('Escolha uma senha diferente da senha temporária.')
+    if (nova !== confirma)         return setError('As senhas não coincidem.')
+    setLoading(true)
+    try {
+      await onSave(nova)
+      setOk(true)
+      setTimeout(() => window.location.replace('/'), 1500)
+    } catch (err) {
+      setError(err.message || 'Erro ao salvar. Tente novamente.')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div style={{ width:'100vw', height:'100vh', background:'#000', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:"'Segoe UI',sans-serif" }}>
+      <div style={{ width:420, background:'rgba(12,12,20,0.97)', border:'1px solid rgba(212,175,55,0.25)', borderRadius:20, padding:'48px 40px', boxShadow:'0 30px 80px rgba(0,0,0,0.7)' }}>
+        {ok ? (
+          <div style={{ textAlign:'center' }}>
+            <div style={{ fontSize:48, marginBottom:16 }}>✅</div>
+            <div style={{ fontSize:16, fontWeight:800, color:'#4ade80', marginBottom:8 }}>Senha alterada!</div>
+            <div style={{ fontSize:13, color:'rgba(255,255,255,0.4)' }}>Redirecionando...</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ textAlign:'center', marginBottom:32 }}>
+              <div style={{ fontSize:32, marginBottom:12 }}>🔐</div>
+              <div style={{ fontSize:13, fontWeight:800, letterSpacing:'0.4em', color:'rgba(212,175,55,0.8)', textTransform:'uppercase', marginBottom:10 }}>
+                Primeiro acesso
+              </div>
+              <div style={{ fontSize:13, color:'rgba(255,255,255,0.45)', lineHeight:1.7 }}>
+                Você entrou com uma senha temporária.<br />
+                Crie uma senha pessoal para continuar.
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:18 }}>
+              {/* Nova senha */}
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:8, display:'block', letterSpacing:'0.1em', textTransform:'uppercase' }}>Nova senha</label>
+                <div style={{ position:'relative' }}>
+                  <input
+                    type={showNova ? 'text' : 'password'} value={nova} onChange={e => setNova(e.target.value)}
+                    required placeholder="Mínimo 6 caracteres"
+                    style={{ width:'100%', boxSizing:'border-box', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'14px 70px 14px 16px', color:'#e8eaf0', fontSize:14, outline:'none' }}
+                  />
+                  <button type="button" onClick={() => setShowNova(p => !p)} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'rgba(212,175,55,0.08)', border:'1px solid rgba(212,175,55,0.28)', borderRadius:6, color:'#D4AF37', fontSize:9, fontWeight:800, cursor:'pointer', padding:'5px 10px', letterSpacing:'0.08em', textTransform:'uppercase' }}>
+                    {showNova ? 'Ocultar' : 'Ver'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirmar senha */}
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'#888', marginBottom:8, display:'block', letterSpacing:'0.1em', textTransform:'uppercase' }}>Confirmar senha</label>
+                <div style={{ position:'relative' }}>
+                  <input
+                    type={showConf ? 'text' : 'password'} value={confirma} onChange={e => setConfirma(e.target.value)}
+                    required placeholder="Repita a nova senha"
+                    style={{ width:'100%', boxSizing:'border-box', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'14px 70px 14px 16px', color:'#e8eaf0', fontSize:14, outline:'none' }}
+                  />
+                  <button type="button" onClick={() => setShowConf(p => !p)} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'rgba(212,175,55,0.08)', border:'1px solid rgba(212,175,55,0.28)', borderRadius:6, color:'#D4AF37', fontSize:9, fontWeight:800, cursor:'pointer', padding:'5px 10px', letterSpacing:'0.08em', textTransform:'uppercase' }}>
+                    {showConf ? 'Ocultar' : 'Ver'}
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <div style={{ background:'rgba(248,113,113,0.08)', border:'1px solid rgba(248,113,113,0.25)', borderRadius:8, padding:'11px 14px', color:'#f87171', fontSize:12, textAlign:'center' }}>
+                  {error}
+                </div>
+              )}
+
+              <button type="submit" disabled={loading} style={{ padding:'14px', border:'none', borderRadius:10, background:'linear-gradient(90deg,#6b4a00,#B8860B,#D4AF37,#EDD26A,#D4AF37,#B8860B)', backgroundSize:'300% auto', color:'#1a1000', fontWeight:900, fontSize:13, letterSpacing:'.18em', cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.5 : 1, marginTop:4 }}>
+                {loading ? 'SALVANDO...' : 'DEFINIR MINHA SENHA'}
+              </button>
+            </form>
+          </>
+        )}
       </div>
     </div>
   )
