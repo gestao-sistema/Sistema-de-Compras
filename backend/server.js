@@ -25,6 +25,7 @@ app.use(express.json())
 const DISK_CACHE      = path.join(__dirname, 'cache_compras.json')
 const CACHE_TTL       = 30 * 60 * 1000   // 30 minutos (refresh automático)
 const DISK_MAX_AGE    = 12 * 60 * 60 * 1000  // disco válido por 12h para startup rápido
+const REFRESH_PAUSE   = 10 * 60 * 1000   // espera 10 min APÓS concluir antes de reatualizar
 
 const cache = new Map()
 
@@ -363,7 +364,7 @@ async function initialLoad() {
   }
 }
 
-// Loop contínuo: terminou → já inicia o próximo. Só aplica quando os dados estão completos.
+// Loop contínuo: concluiu uma atualização → espera 10 min → reatualiza.
 async function refreshLoop() {
   await initialLoad()
   // Pré-aquece pedidos e fornecedores em background após produtos carregarem
@@ -371,6 +372,8 @@ async function refreshLoop() {
   while (true) {
     await refresh()
     warmPedidosForn().catch(() => {})
+    // Pausa de 10 min após concluir antes de iniciar a próxima atualização
+    await new Promise(r => setTimeout(r, REFRESH_PAUSE))
   }
 }
 
