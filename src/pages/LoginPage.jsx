@@ -52,8 +52,9 @@ export default function LoginPage() {
     try {
       await login(emailNorm, senha)
       if (senha === 'AZIME2026') setForcePwd(true)
-    } catch {
-      setError('E-mail ou senha incorretos.')
+    } catch (err) {
+      const isAuthError = err?.status >= 400 && err?.status < 500
+      setError(isAuthError ? 'E-mail ou senha incorretos.' : 'Falha de conexão. Verifique sua internet e tente novamente.')
       setShake(true); setTimeout(() => setShake(false), 600)
     }
     setLoading(false)
