@@ -22,10 +22,16 @@ app.use(express.json())
 
 // ─── cache (memória + disco) ─────────────────────────────────────────────────
 
-const DISK_CACHE      = path.join(__dirname, 'cache_compras.json')
+// CACHE_DIR: aponte para um Railway Volume (ex: /data) para o cache sobreviver a deploys.
+// Sem ele, cai no diretório da app (efêmero na Railway, persistente localmente).
+const CACHE_DIR       = process.env.CACHE_DIR || __dirname
+const DISK_CACHE      = path.join(CACHE_DIR, 'cache_compras.json')
 const CACHE_TTL       = 30 * 60 * 1000   // 30 minutos (refresh automático)
 const DISK_MAX_AGE    = 12 * 60 * 60 * 1000  // disco válido por 12h para startup rápido
 const REFRESH_PAUSE   = 10 * 60 * 1000   // espera 10 min APÓS concluir antes de reatualizar
+
+// Persiste em disco localmente OU quando há um Volume configurado (CACHE_DIR) na Railway.
+const DISK_PERSIST    = !process.env.RAILWAY_ENVIRONMENT || !!process.env.CACHE_DIR
 
 const cache = new Map()
 
@@ -36,10 +42,11 @@ function cacheGet(k) {
 
 function cacheSet(k, d) {
   cache.set(k, { data: d, ts: Date.now() })
-  if (k === 'compras_all' && !process.env.RAILWAY_ENVIRONMENT) {
+  if (k === 'compras_all' && DISK_PERSIST) {
     try {
+      fs.mkdirSync(CACHE_DIR, { recursive: true })
       fs.writeFileSync(DISK_CACHE, JSON.stringify({ ts: Date.now(), data: d }))
-      console.log(`[disk] cache salvo: ${d.length} produtos`)
+      console.log(`[disk] cache salvo: ${d.length} produtos em ${DISK_CACHE}`)
     } catch (e) { console.error('[disk] erro ao salvar:', e.message) }
   }
 }
