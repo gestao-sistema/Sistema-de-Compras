@@ -59,11 +59,6 @@ export default function SugestoesPage() {
 
   return (
     <div>
-      {abcQ.isFetching && (
-        <div style={{ position: 'fixed', top: 18, right: 70, zIndex: 20 }}>
-          <span className="text-xs" style={{ color: 'var(--accent)' }}>↻ atualizando…</span>
-        </div>
-      )}
 
       <div className="page-body space-y-4">
 
@@ -267,7 +262,14 @@ function AbcChip({ label, count, active, onClick }) {
   )
 }
 
+function proxFoto(url) {
+  if (!url || url.startsWith('/api/image-proxy')) return url
+  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  return url
+}
+
 function FotoZoom({ url, alt }) {
+  const src = proxFoto(url)
   const [visible, setVisible] = useState(!!url)
   const [pos,     setPos]     = useState(null)
 
@@ -284,11 +286,11 @@ function FotoZoom({ url, alt }) {
       onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setPos(null)}
     >
-      <img src={url} alt={alt} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, background: 'var(--bg-input)', display: 'block' }}
+      <img src={src} alt={alt} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, background: 'var(--bg-input)', display: 'block' }}
         onError={() => setVisible(false)} />
       {pos && (
         <div className="foto-zoom-popup" style={{ left: pos.x + 16, top: Math.min(pos.y - 110, window.innerHeight - 230) }}>
-          <img src={url} alt={alt} style={{ width: 200, height: 200, objectFit: 'contain', display: 'block', borderRadius: 6 }} />
+          <img src={src} alt={alt} style={{ width: 200, height: 200, objectFit: 'contain', display: 'block', borderRadius: 6 }} />
         </div>
       )}
     </div>

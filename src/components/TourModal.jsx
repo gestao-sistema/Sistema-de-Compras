@@ -24,9 +24,9 @@ const PASSOS = [
     itens: [
       '💰 Markup  →  quanto o preço multiplica o custo (ex: 2,50x)',
       '📊 Margem  →  % de lucro sobre o preço de venda (ex: 60%)',
-      '📅 DDE  →  quantos dias o estoque atual vai durar',
-      '🔄 Giro  →  velocidade de saída: vendas 90d ÷ saldo médio',
-      '📉 Taxa de Saída  →  % do estoque vendido no período: Vendas ÷ (Saldo + Vendas) × 100',
+      '📅 DDE  →  quantos dias o estoque disponível vai durar: Saldo Disp. ÷ (Vend.30d ÷ 30)',
+      '🔄 Giro  →  quantas vezes o estoque se renova por ano: (Vend.30d ÷ 30 × 365) ÷ Saldo. Ex: 36x = estoque se renova ~1x por mês',
+      '📉 Taxa de Saída  →  % do fluxo total que foi vendido: Vend.30d ÷ (Vend.30d + Saldo) × 100. Ex: 70% = de tudo que circulou, 70% foi vendido',
       '🔴 Ruptura  →  saldo zerado mas produto ainda sendo vendido',
       '🟠 Risco  →  estoque positivo mas acabando em menos de 30 dias',
       '🏆 Curva ABC  →  A = top 80% do faturamento · B = próximos 15% · C = últimos 5%',
@@ -362,8 +362,8 @@ function PreviewCalculos({ cor }) {
   const items = [
     { nome: 'MARKUP',      formula: 'Preço ÷ Custo',                  ex: '2,50x',    cor: '#a78bfa', icon: '💰' },
     { nome: 'MARGEM',      formula: '(Preço−Custo) ÷ Preço',          ex: '60%',      cor: '#f5c518', icon: '📊' },
-    { nome: 'DDE',         formula: 'Saldo ÷ Venda/dia',              ex: '30 dias',  cor: '#00b4d8', icon: '📅' },
-    { nome: 'GIRO',        formula: 'Vendas 90d ÷ Saldo',             ex: '3,2x',     cor: '#4ade80', icon: '🔄' },
+    { nome: 'DDE',         formula: 'Saldo Disp. ÷ Venda/dia',         ex: '30 dias',  cor: '#00b4d8', icon: '📅' },
+    { nome: 'GIRO',        formula: '(Vend.30d×365÷30)÷Saldo',        ex: '3,2x',     cor: '#4ade80', icon: '🔄' },
     { nome: 'TX. SAÍDA',   formula: 'Vendas ÷ (Saldo+Vendas) × 100', ex: '68%',      cor: '#38bdf8', icon: '📉' },
     { nome: 'RUPTURA',     formula: 'Saldo=0 + Venda30d>0',           ex: '⚠️ crítico', cor: '#f87171', icon: '🔴' },
     { nome: 'RISCO',       formula: 'Saldo>0 + DDE<30d',              ex: '⚡ urgente', cor: '#fb923c', icon: '🟠' },

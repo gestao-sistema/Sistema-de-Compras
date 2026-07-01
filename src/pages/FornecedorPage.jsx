@@ -89,7 +89,7 @@ export default function FornecedorPage() {
         <KPI label="Fornecedores"                       value={fNum(fornComProdutos.length)} color="#f5c518" sub="Total histórico" />
         <KPI label="Peças Vendidas"                     value={fNum(totVendida)}             color="#00b4d8" sub="Total histórico" />
         <KPI label="Custo Total"                        value={fBRL(totCusto)}               color="#f87171" sub="Total histórico" />
-        <KPI label="Venda"                              value={fBRL(totVenda)}               color="#a3e635" sub="Total histórico" />
+        <KPI label="Receita"                             value={fBRL(totVenda)}               color="#a3e635" sub="Total histórico" />
         <KPI label={`Lucro (${totMargem.toFixed(1)}%)`} value={fBRL(totLucro)}              color="#818cf8" sub="Total histórico" />
       </div>
 
@@ -249,7 +249,7 @@ function ResumoTab({ fornecedores, expanded, toggle, sortBy, prodFiltros }) {
 
               <div style={{ display: 'flex', gap: 28, flexShrink: 0 }}>
                 <Stat label="Custo Total" value={fBRL(f.custoVendas)} color="#f87171" />
-                <Stat label="Venda"       value={fBRL(f.vendaReal)}   color="#a3e635" />
+                <Stat label="Receita"     value={fBRL(f.vendaReal)}   color="#a3e635" />
                 <Stat label="Lucro"       value={fBRL(f.lucro)}       color="#818cf8" />
                 <Stat label="Margem"      value={`${f.margem.toFixed(1)}%`} color={mgColor} />
               </div>
@@ -339,8 +339,8 @@ function Top7Vendidos({ produtos, sortBy = 'vendidas', globalLabel = false }) {
 
               {/* Métricas */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                <Metric label="Vendidas"  value={fNum(p.vendida)}             color="#f5c518" bold />
-                <Metric label="Estoque"   value={fNum(p.saldo)}               color="#f5c518" />
+                <Metric label="QTD. Vend."     value={fNum(p.vendida)}             color="#f5c518" bold />
+                <Metric label="Estoque Total"  value={fNum(p.saldo)}               color="#f5c518" />
                 <Metric label="Receita"   value={fBRL(p.vendaReal)}           color="#a3e635" />
                 <Metric label="Lucro"     value={fBRL(p.lucro)}               color="#818cf8" />
                 <Metric label="Margem"    value={`${p.margem.toFixed(1)}%`}   color={mgColor} />
@@ -386,7 +386,7 @@ function TodosProdutos({ produtos, sortBy }) {
       <table className="w-full" style={{ borderCollapse: 'collapse', minWidth: 900 }}>
         <thead>
           <tr style={{ background: 'var(--bg-card2)', borderBottom: '2px solid #22253a', position: 'sticky', top: 0, zIndex: 10 }}>
-            {['Foto','Código','Descrição','Grupo','Estoque','Vendidas','Custo Unit.','Preço Venda','Markup','Custo Vendas','Receita','Lucro','Margem'].map(h => (
+            {['Foto','Código','Descrição','Grupo','Estoque Total','QTD. Vend.','Custo Unit.','Custo Total','PV UN','Receita','Lucro','MG(%)','Markup'].map(h => (
               <th key={h} style={{ ...thStyle(h==='Descrição'), fontSize: 10, background: 'var(--bg-card2)' }}>{h}</th>
             ))}
           </tr>
@@ -412,13 +412,13 @@ function TodosProdutos({ produtos, sortBy }) {
                 <td style={{ ...td, textAlign: 'center', fontSize: 11, color: '#00b4d8' }}>{p.grupo}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: p.saldo === 0 ? '#f87171' : 'var(--text)' }}>{fNum(p.saldo)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: isTop7 ? '#f5c518' : 'var(--text)', fontWeight: isTop7 ? 800 : 400 }}>{fNum(p.vendida)}</td>
-                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#f87171' }}>{fBRL(p.custo)}</td>
+                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#f87171' }}>{(p.custo ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#f87171', fontWeight: 700 }}>{fBRL(p.custoVendas)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#a3e635' }}>{fBRL(p.preco)}</td>
-                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: mkColor(p.custo, p.preco) }}>{fMarkup(p.custo, p.preco)}</td>
-                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#fb923c', fontWeight: 700 }}>{fBRL(p.custoVendas)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(p.vendaReal)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#818cf8', fontWeight: 700 }}>{fBRL(p.lucro)}</td>
                 <td style={{ ...td, textAlign: 'center', fontWeight: 700, fontSize: 12, color: mgColor }}>{p.margem.toFixed(1)}%</td>
+                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: mkColor(p.custo, p.preco) }}>{fMarkup(p.custo, p.preco)}</td>
               </tr>
             )
           })}

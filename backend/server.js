@@ -52,6 +52,7 @@ function loadDiskCache() {
     if (age > DISK_MAX_AGE) { console.log('[disk] cache expirado, buscando API…'); return null }
     console.log(`[disk] cache carregado: ${obj.data.length} produtos (${Math.round(age/60000)}min atrás)`)
     cache.set('compras_all', { data: obj.data, ts: obj.ts })
+    warmState.lastRefreshed = obj.ts  // mostra quando os dados realmente foram buscados
     return obj.data
   } catch (e) { console.error('[disk] erro ao ler:', e.message); return null }
 }
@@ -105,13 +106,13 @@ async function fetchFromAPI() {
   if (_fetchingPromise) return _fetchingPromise
 
   _fetchingPromise = (async () => {
-    const PAGE      = 1000
-    const MAX_RETRY = 3
-    const all       = []
-    let   page      = 1
-    let   emptyStreak = 0
+    const PAGE        = 1000
+    const MAX_RETRY   = 20   // tenta muito antes de desistir de uma página
+    const all         = []
+    let   page        = 1
+    let   emptyStreak = 0    // só conta páginas REALMENTE vazias (fim da API)
 
-    console.log('[API] buscando produtos pai (100/pág, sequencial)…')
+    console.log('[API] buscando produtos pai (sequencial, sem parar em erro)…')
 
     while (true) {
       const url = new URL(`${COMPRAS_BASE}/Compras`)
@@ -130,18 +131,27 @@ async function fetchFromAPI() {
           result = Array.isArray(data) ? data : []
           break
         } catch (e) {
-          console.warn(`[API] pág ${page} tentativa ${attempt}/${MAX_RETRY}: ${e.message}`)
-          if (attempt < MAX_RETRY) await new Promise(r => setTimeout(r, 500))
+          const delay = Math.min(1000 * attempt, 15000)  // backoff: 1s, 2s, … até 15s
+          console.warn(`[API] pág ${page} tentativa ${attempt}/${MAX_RETRY}: ${e.message} (aguardando ${delay}ms)`)
+          await new Promise(r => setTimeout(r, delay))
         }
       }
 
       if (result === null) {
+        // Esgotou todas as tentativas → pula a página mas NÃO para
+        console.warn(`[API] pág ${page} IGNORADA após ${MAX_RETRY} tentativas, continuando…`)
+        page++
+        if (page > 500) break
+        continue
+      }
+
+      if (result.length === 0) {
+        // Página realmente vazia → provavelmente fim da paginação
         emptyStreak++
+        console.log(`[API] pág ${page} vazia (streak ${emptyStreak})`)
         if (emptyStreak >= 3) break
-      } else if (result.length === 0 || (page > 1 && result.length === 1)) {
-        emptyStreak++
-        if (emptyStreak >= 2) break
       } else {
+        // Qualquer quantidade de itens (mesmo 1) é dado válido
         emptyStreak = 0
         all.push(...result)
         warmState.pais = all.length
@@ -200,9 +210,8 @@ function buildRow(pai, v) {
   const saldo04  = n(item.estoque_atual_04)
   const saldoD01 = n(item.estoque_disponivel_01)
   const saldoD04 = n(item.estoque_disponivel_04)
-  // clamp negativos a 0 para evitar que estoque negativo de um almox reduza o total
-  const saldo    = Math.max(0, saldo01) + Math.max(0, saldo04) || n(item.estoque_atual)
-  const saldoD   = Math.max(0, saldoD01) + Math.max(0, saldoD04) || n(item.estoque_disponivel)
+  const saldo    = (saldo01 + saldo04) || n(item.estoque_atual)
+  const saldoD   = (saldoD01 + saldoD04) || n(item.estoque_disponivel)
   const valorEst = n(item.valor_estoque_atual_01) + n(item.valor_estoque_atual_04) || n(item.valor_estoque_atual)
   // usa sempre o código filho quando existir — o || pai.x causava herdar o total do pai
   // (soma de todas as variações) para filhos com 0 vendas, inflando os cálculos
@@ -215,13 +224,13 @@ function buildRow(pai, v) {
 
   let dde = 9999, giro = 0
   if (vend30 > 0) {
-    dde  = saldo > 0 ? Math.round(saldo / (vend30 / 30)) : 0
-    giro = saldo > 0 ? +((vend30 * 365 / 30) / saldo).toFixed(1) : 0
+    dde  = saldoD > 0 ? Math.round(saldoD / (vend30 / 30)) : 0
+    giro = saldo  > 0 ? +((vend30 * 365 / 30) / saldo).toFixed(1) : 0
   } else if (vendida > 0) {
     const entrada = parseDateBR(item.data_entrada || pai.data_entrada)
     const dias    = entrada ? Math.max(1, (Date.now() - entrada) / 86400000) : 365
     const diario  = vendida / dias
-    dde  = diario > 0 ? Math.round(saldo / diario) : 9999
+    dde  = diario > 0 ? Math.round(saldoD / diario) : 9999
     giro = saldo  > 0 ? +((diario * 365) / saldo).toFixed(1) : 0
   }
 
@@ -306,11 +315,11 @@ async function refresh() {
 
     const parents = await fetchFromAPI()
 
-    // Valida integridade: só aceita se tiver pelo menos 95% dos produtos anteriores
+    // Valida integridade: só descarta se o novo fetch trouxe muito menos que o anterior
     const prevCache = cacheGet('compras_all')
     const prevCount = prevCache ? prevCache.length : 0
-    if (prevCount > 0 && parents.length < prevCount * 0.95) {
-      console.warn(`[refresh] DESCARTADO — novo fetch retornou ${parents.length} produtos mas o cache tem ${prevCount} (< 95%). Mantendo dados anteriores.`)
+    if (prevCount > 0 && parents.length < prevCount * 0.80) {
+      console.warn(`[refresh] DESCARTADO — novo fetch retornou ${parents.length} produtos mas o cache tem ${prevCount} (< 80%). Mantendo dados anteriores.`)
       return
     }
 
@@ -345,7 +354,8 @@ async function initialLoad() {
   warmState.startedAt = Date.now()
   try {
     await getProdutos()   // usa disco se fresco, senão busca API
-    warmState.lastRefreshed = Date.now()
+    // lastRefreshed: se disco foi usado, já foi setado em loadDiskCache; caso contrário é agora
+    if (!warmState.lastRefreshed) warmState.lastRefreshed = Date.now()
     console.log(`[warm] pronto: ${warmState.skus} SKUs`)
   } catch (e) {
     warmState.error = e.message
@@ -668,11 +678,143 @@ app.get('/api/image-proxy', async (req, res) => {
   const { url } = req.query
   if (!url) return res.status(400).json({ error: 'url required' })
   try {
-    const r = await axios.get(url, { responseType: 'arraybuffer', timeout: 8000 })
+    const r = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 12000,
+      httpsAgent,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        'Referer': 'https://compras.azime.com.br/',
+      },
+    })
     res.set('Content-Type', r.headers['content-type'] || 'image/jpeg')
     res.set('Cache-Control', 'public, max-age=86400')
     res.send(Buffer.from(r.data))
-  } catch { res.status(404).end() }
+  } catch (e) {
+    console.log(`[image-proxy] FALHOU: ${url} → ${e.message}`)
+    res.status(404).end()
+  }
+})
+
+app.get('/api/debug/foto', async (req, res) => {
+  const { produto } = req.query
+  // Dados brutos da API (antes do processamento)
+  const parents = await fetchAllCompras()
+  let rawPai = null, rawVariacao = null
+  for (const pai of parents) {
+    if (pai.produto === produto) { rawPai = pai; break }
+    const v = (pai.variacoes || []).find(v => v.produto === produto)
+    if (v) { rawPai = pai; rawVariacao = v; break }
+  }
+  if (!rawPai) return res.json({ erro: 'produto não encontrado', produto })
+
+  const rawFotoUrl = (rawVariacao || rawPai).foto_url || null
+  const paiFotoUrl = rawPai.foto_url || null
+  const fotoGerada = fotoUrl(rawFotoUrl || paiFotoUrl, produto)
+
+  let testeHttp = null
+  if (fotoGerada) {
+    try {
+      const r = await axios.head(fotoGerada, { timeout: 8000, httpsAgent, headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://compras.azime.com.br/' } })
+      testeHttp = { status: r.status, contentType: r.headers['content-type'] }
+    } catch (e) {
+      testeHttp = { erro: e.message }
+    }
+  }
+
+  res.json({
+    produto,
+    rawFotoUrl,
+    paiFotoUrl,
+    fotoGerada,
+    testeHttp,
+    camposDisponiveis: Object.keys(rawVariacao || rawPai).filter(k => k.includes('foto') || k.includes('imag') || k.includes('url')),
+  })
+})
+
+// Conta produtos na API diretamente (sem cache) para comparar com o cache atual
+app.get('/api/debug/contar', async (req, res) => {
+  try {
+    // Pega total no cache atual
+    const cached = cacheGet('compras_all')
+    const noCache = cached ? cached.length : 0
+
+    // Busca pág 1 e pág 2 direto da API para estimar total
+    const fetchPag = async (page) => {
+      const url = new URL(`${COMPRAS_BASE}/Compras`)
+      url.searchParams.set('limit', '1000')
+      url.searchParams.set('page', String(page))
+      const { data } = await axios.get(url.toString(), {
+        headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 60000, decompress: true,
+      })
+      return Array.isArray(data) ? data.length : 0
+    }
+
+    const [p1, p2, p20] = await Promise.all([fetchPag(1), fetchPag(2), fetchPag(20)])
+    res.json({
+      cache_atual_produtos_pai: noCache,
+      pagina_1: p1,
+      pagina_2: p2,
+      pagina_20: p20,
+      ultima_atualizacao: warmState.lastRefreshed ? new Date(warmState.lastRefreshed).toLocaleString('pt-BR') : null,
+    })
+  } catch (e) {
+    res.status(500).json({ erro: e.message })
+  }
+})
+
+// Busca pág 1 direto da API (sem cache) e mostra estrutura real dos campos
+app.get('/api/debug/api-raw', async (req, res) => {
+  try {
+    const url = new URL(`${COMPRAS_BASE}/Compras`)
+    url.searchParams.set('limit', '5')
+    url.searchParams.set('page',  '1')
+    const { data } = await axios.get(url.toString(), {
+      headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 30000, decompress: true,
+    })
+    const items = Array.isArray(data) ? data : []
+    // retorna os primeiros 5 produtos com TODOS os campos visíveis
+    res.json({
+      total_retornados: items.length,
+      amostra: items.slice(0, 5).map(p => ({
+        produto:   p.produto,
+        descricao: p.descricao,
+        grupo:     p.grupo,
+        // todos os campos que possam ter foto/url
+        campos_foto: Object.fromEntries(Object.entries(p).filter(([k]) =>
+          k.toLowerCase().includes('foto') || k.toLowerCase().includes('imag') ||
+          k.toLowerCase().includes('url')  || k.toLowerCase().includes('path')
+        )),
+        // variações (primeiro filho apenas)
+        primeiro_filho: p.variacoes?.[0] ? {
+          produto: p.variacoes[0].produto,
+          campos_foto: Object.fromEntries(Object.entries(p.variacoes[0]).filter(([k]) =>
+            k.toLowerCase().includes('foto') || k.toLowerCase().includes('imag') ||
+            k.toLowerCase().includes('url')  || k.toLowerCase().includes('path')
+          )),
+        } : null,
+      })),
+    })
+  } catch (e) {
+    res.status(500).json({ erro: e.message })
+  }
+})
+
+// Força recarregamento completo: apaga cache em disco e memória, busca API do zero
+app.post('/api/admin/force-refresh', async (req, res) => {
+  try {
+    // Apaga cache de memória
+    cache.clear()
+    // Apaga cache de disco
+    if (fs.existsSync(DISK_CACHE)) fs.unlinkSync(DISK_CACHE)
+    console.log('[force-refresh] cache limpo, rebuscando API do zero…')
+    res.json({ ok: true, mensagem: 'Cache limpo. Rebuscando dados da API em background…' })
+    // Dispara refresh em background (não bloqueia resposta)
+    refresh().catch(e => console.error('[force-refresh] erro:', e.message))
+  } catch (e) {
+    res.status(500).json({ erro: e.message })
+  }
 })
 
 app.get('/api/status', (req, res) => {
@@ -706,7 +848,7 @@ function applyFilial(items, filial) {
   return items.map(i => {
     const s  = filial === '01' ? i._saldo01  : i._saldo04
     const sd = filial === '01' ? i._saldoDisp01 : i._saldoDisp04
-    const dde = i._vend30 > 0 && s > 0 ? Math.round(s / (i._vend30 / 30)) : (i._vend30 > 0 && s === 0 ? 0 : 9999)
+    const dde = i._vend30 > 0 && sd > 0 ? Math.round(sd / (i._vend30 / 30)) : (i._vend30 > 0 && sd === 0 ? 0 : 9999)
     return { ...i, _saldo: s, _saldoDisp: sd, _dde: dde }
   })
 }

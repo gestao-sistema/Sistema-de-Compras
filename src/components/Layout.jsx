@@ -88,30 +88,18 @@ export default function Layout() {
         </nav>
 
         <div className="mt-auto px-4 pb-6">
-          {/* Indicador de atualização automática */}
+          {/* Indicador de sincronização */}
           <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)' }}>
-            {justUpdated ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ color: '#4ade80', fontSize: 14 }}>✓</span>
-                <span style={{ color: '#4ade80', fontSize: 11, fontWeight: 600 }}>Dados atualizados!</span>
-              </div>
-            ) : isRefreshing ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1s infinite' }} />
-                <span style={{ color: 'var(--accent)', fontSize: 11 }}>Atualizando base…</span>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ade80' }} />
-                <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Sincronização ativa</span>
-              </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: statusQ.data?.lastRefreshed ? 8 : 0 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sincronização ativa</span>
+            </div>
             {statusQ.data?.lastRefreshed && (
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-nav)', marginBottom: 3 }}>
+              <>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-nav)', marginBottom: 4 }}>
                   Última atualização
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span style={{ fontSize: 10, color: '#4ade80' }}>🕐</span>
                   <span style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.05em', color: 'var(--accent)', fontFamily: 'monospace' }}>
                     {new Date(statusQ.data.lastRefreshed).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -120,16 +108,9 @@ export default function Layout() {
                 <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-nav)', marginTop: 2 }}>
                   {new Date(statusQ.data.lastRefreshed).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </div>
-              </div>
+              </>
             )}
           </div>
-
-          <button
-            onClick={() => qc.invalidateQueries()}
-            className="btn-ghost w-full text-center text-xs"
-          >
-            ↺ Atualizar tela
-          </button>
           <button
             onClick={() => setShowTour(true)}
             className="btn-ghost w-full text-center text-xs"

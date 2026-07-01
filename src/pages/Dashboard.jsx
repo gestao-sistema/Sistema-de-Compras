@@ -105,11 +105,6 @@ export default function Dashboard() {
 
   return (
     <div>
-      {isFetching && !isWarm && (
-        <div style={{ position: 'fixed', top: 18, right: 70, zIndex: 20 }}>
-          <span className="text-xs" style={{ color: 'var(--accent)' }}>↻ atualizando…</span>
-        </div>
-      )}
 
       {isWarm && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--accent)', borderRadius: 8, padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -141,7 +136,7 @@ export default function Dashboard() {
             <DrillTab label="GRUPO"         id="grupo"   active={tab} onClick={changeTab} />
             <DrillTab label="TIPO DE PEDRA" id="pedra"   active={tab} onClick={changeTab} />
             <DrillTab label="TAG 2"         id="tag2"    active={tab} onClick={changeTab} />
-            <DrillTab label="PRODUTO"       id="produto" active={tab} onClick={changeTab} />
+            <DrillTab label="SKU"           id="produto" active={tab} onClick={changeTab} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 8 }}>
               {[{ id: '', label: 'Todos' }, { id: '01', label: 'Almox 01' }, { id: '04', label: 'Almox 04' }].map(o => (
                 <button key={o.id} onClick={() => { setFilialFilter(o.id); setPage(0) }}
@@ -367,14 +362,14 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
               <TH k="grupo"       label="Grupo" />
               <TH k="pedra"       label="Tipo de Pedra" />
               <TH k="tag2"        label="TAG 2" />
-              <TH k="descricao"   label="Produto" />
-              <TH k="_saldo"      label="Est. Atual"   align="center" />
-              <TH k="_saldoDisp"  label="Disponível"   align="center" />
+              <TH k="descricao"   label="SKU" />
+              <TH k="_saldo"      label="Estoque"            align="center" />
+              <TH k="_saldoDisp"  label="Estoque Disponível" align="center" />
               <TH k="_vend30"     label="Vend. 30D"    align="center" />
               <TH k="_taxaSaida"  label="Saída"        align="center" />
               <TH k="_dde"        label="DDE"          align="center" />
               <TH k="_giro"       label="Giro"         align="center" />
-              <TH k="_precoMedio" label="Preço M."     align="center" />
+              <TH k="_preco"      label="PV UN"        align="center" />
             </tr>
           </thead>
           <tbody>
@@ -414,7 +409,7 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
                 <td style={{ textAlign: 'center' }}>
                   {row._giro > 0 ? <span style={{ color: '#818cf8' }}>{fNum(row._giro, 1)}x</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
                 </td>
-                <td style={{ textAlign: 'center' }}>{row._precoMedio > 0 ? fBRL(row._precoMedio) : '-'}</td>
+                <td style={{ textAlign: 'center' }}>{row._preco > 0 ? fBRL(row._preco) : '-'}</td>
               </tr>
             ))}
           </tbody>
@@ -474,16 +469,15 @@ function TabelaGrupo({ rows, label, isFetching }) {
           <thead>
             <tr>
               <TH k="_key"        l={label} />
-              <TH k="_count"      l="Produtos"     align="right" />
-              <TH k="_saldo"      l="Est. Atual"   align="right" />
-              <TH k="_saldoDisp"  l="Est. Disp."   align="right" />
-              <TH k="_valorEst"   l="Val. Estoque" align="right" />
-              <TH k="_vend30"     l="Vend. 30D"    align="right" />
-              <TH k="_taxaSaida"  l="Taxa Saída"   align="right" />
-              <TH k="_dde"        l="DDE"          align="right" />
-              <TH k="_giroMedio"  l="Giro"         align="right" />
+              <TH k="_count"      l="QTD SKU"            align="right" />
+              <TH k="_saldo"      l="Estoque Total"      align="right" />
+              <TH k="_saldoDisp"  l="Estoque Disponível" align="right" />
+              <TH k="_valorEst"   l="Val. Estoque"       align="right" />
+              <TH k="_vend30"     l="Vend. 30D"          align="right" />
+              <TH k="_taxaSaida"  l="Taxa Saída"         align="right" />
+              <TH k="_dde"        l="DDE"                align="right" />
+              <TH k="_giroMedio"  l="Giro"               align="right" />
               <th style={{ whiteSpace: 'nowrap', padding: '10px 12px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10 }}>Ruptura</th>
-              <TH k="_precoMedio" l="Preço Médio"  align="right" />
             </tr>
           </thead>
           <tbody>
@@ -517,10 +511,9 @@ function TabelaGrupo({ rows, label, isFetching }) {
                   <td>
                     {semVenda
                       ? <span className="badge" style={{ background: '#713f12', color: '#fbbf24', fontSize: 11 }}>SEM GIRO</span>
-                      : dde < 30 ? <span className="badge badge-risco">RISCO</span>
-                      : <span className="badge badge-ok">OK</span>}
+                      : dde < 30 ? <span className="badge badge-risco">CRÍTICO</span>
+                      : <span className="badge badge-ok">DISPONÍVEL</span>}
                   </td>
-                  <td style={{ textAlign: 'right' }}>{row._precoMedio > 0 ? fBRL(row._precoMedio) : '—'}</td>
                 </tr>
               )
             })}
@@ -533,6 +526,12 @@ function TabelaGrupo({ rows, label, isFetching }) {
 
 // ─── Foto com zoom ────────────────────────────────────────────────────────────
 
+function proxFoto(url) {
+  if (!url || url.startsWith('/api/image-proxy')) return url
+  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  return url
+}
+
 function FotoZoom({ url, alt }) {
   const [pos, setPos] = useState(null)
 
@@ -544,7 +543,7 @@ function FotoZoom({ url, alt }) {
       onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setPos(null)}
     >
-      <img src={url} alt={alt} className="rounded object-cover flex-shrink-0"
+      <img src={proxFoto(url)} alt={alt} className="rounded object-cover flex-shrink-0"
         style={{ width: 36, height: 36, background: 'var(--bg-input)', display: 'block' }}
         onError={e => { e.target.style.display = 'none' }} />
       {pos && (
@@ -552,7 +551,7 @@ function FotoZoom({ url, alt }) {
           left: pos.x + 16,
           top:  Math.min(pos.y - 110, window.innerHeight - 230),
         }}>
-          <img src={url} alt={alt} style={{ width: 200, height: 200, objectFit: 'contain', display: 'block', borderRadius: 6 }} />
+          <img src={proxFoto(url)} alt={alt} style={{ width: 200, height: 200, objectFit: 'contain', display: 'block', borderRadius: 6 }} />
         </div>
       )}
     </div>
@@ -570,8 +569,8 @@ function PlaceholderFoto() {
 }
 
 function RupturaBadge({ dde, saldo, vend30 }) {
-  if (saldo === 0 && vend30 > 0) return <span className="badge badge-risco">RISCO</span>
+  if (saldo === 0 && vend30 > 0) return <span className="badge badge-risco">CRÍTICO</span>
   if (dde < 30 && dde < 9999)   return <span className="badge badge-alerta">ATENÇÃO</span>
-  if (dde < 9999)                return <span className="badge badge-ok">OK</span>
+  if (dde < 9999)                return <span className="badge badge-ok">DISPONÍVEL</span>
   return <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>S/V</span>
 }

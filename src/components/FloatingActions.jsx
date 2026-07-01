@@ -138,6 +138,13 @@ function AlertaBell() {
   )
 }
 
+function proxyFoto(url) {
+  if (!url) return null
+  if (url.startsWith('/api/image-proxy')) return url
+  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  return url
+}
+
 // ─── Linha de produto com zoom de foto e tooltip ──────────────────────────────
 
 function AlertaRow({ p, badge, info }) {
@@ -167,7 +174,7 @@ function AlertaRow({ p, badge, info }) {
           style={{ flexShrink: 0 }}
         >
           {p.foto
-            ? <img src={p.foto} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, display: 'block', border: '1px solid var(--border)', transition: 'transform 0.15s', transform: fotoPos ? 'scale(1.08)' : 'scale(1)' }} onError={e => e.target.style.display='none'} />
+            ? <img src={proxyFoto(p.foto)} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, display: 'block', border: '1px solid var(--border)', transition: 'transform 0.15s', transform: fotoPos ? 'scale(1.08)' : 'scale(1)' }} onError={e => e.target.style.display='none'} />
             : <div style={{ width: 36, height: 36, borderRadius: 6, background: 'var(--bg-input)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>📦</div>
           }
         </div>
@@ -182,7 +189,7 @@ function AlertaRow({ p, badge, info }) {
             borderRadius: 10, padding: 6,
             boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
           }}>
-            <img src={p.foto} alt="" style={{ width: 180, height: 180, objectFit: 'contain', display: 'block', borderRadius: 6 }} />
+            <img src={proxyFoto(p.foto)} alt="" style={{ width: 180, height: 180, objectFit: 'contain', display: 'block', borderRadius: 6 }} />
           </div>
         )}
 

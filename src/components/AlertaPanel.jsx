@@ -2,6 +2,13 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 
+function proxyFoto(url) {
+  if (!url) return null
+  if (url.startsWith('/api/image-proxy')) return url
+  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  return url
+}
+
 export default function AlertaPanel() {
   const [open, setOpen] = useState(false)
   const [aba,  setAba]  = useState('ruptura')
@@ -82,7 +89,7 @@ export default function AlertaPanel() {
             {aba === 'ruptura' && ruptura.map((p, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid var(--border)' }}>
                 {p.foto
-                  ? <img src={p.foto} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--bg-input)' }} onError={e => e.target.style.display='none'} />
+                  ? <img src={proxyFoto(p.foto)} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--bg-input)' }} onError={e => e.target.style.display='none'} />
                   : <div style={{ width: 34, height: 34, borderRadius: 6, background: 'var(--bg-input)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>📦</div>
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -99,7 +106,7 @@ export default function AlertaPanel() {
             {aba === 'risco' && risco.map((p, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', borderBottom: '1px solid var(--border)' }}>
                 {p.foto
-                  ? <img src={p.foto} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--bg-input)' }} onError={e => e.target.style.display='none'} />
+                  ? <img src={proxyFoto(p.foto)} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--bg-input)' }} onError={e => e.target.style.display='none'} />
                   : <div style={{ width: 34, height: 34, borderRadius: 6, background: 'var(--bg-input)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>⚠️</div>
                 }
                 <div style={{ flex: 1, minWidth: 0 }}>

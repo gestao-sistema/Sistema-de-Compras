@@ -137,11 +137,6 @@ export default function ComprasPage() {
 
   return (
     <div style={{ position: 'relative' }}>
-      {isFetching && (
-        <div style={{ position: 'absolute', top: 12, right: 24, zIndex: 20 }}>
-          <span className="text-xs" style={{ color: '#f5c518' }}>↻ atualizando…</span>
-        </div>
-      )}
 
       <div className="page-body space-y-4">
 
