@@ -6,7 +6,7 @@ import FilialSelector from '../components/FilialSelector'
 import FotoZoom from '../components/FotoZoom'
 
 const PAGE_LIMIT  = 100
-const LOCAL_SORTS = ['solicitado', '_saldoDisp01', '_saldoDisp04']
+const LOCAL_SORTS = ['solicitado', '_saldoDisp01', '_saldoDisp04', 'qtdSug', 'valRepor']
 
 export default function ComprasPage() {
   const [rupturaTab,   setRupturaTab]   = useState('risco')
@@ -64,6 +64,13 @@ export default function ComprasPage() {
   const opts         = optQ.data     || { grupos: [], pedras: [], tag2s: [] }
   const pedidosMap   = pedidosQ.data || {}
 
+  // Cálculo da sugestão de compra (mesma fórmula usada na tela e na ordenação)
+  const calcQtd = row => {
+    const solicitado = pedidosMap[row.produto]?.qtd || 0
+    return Math.max(0, Math.ceil((row._vend90 / 90) * cobertura) - row._saldo - solicitado)
+  }
+  const calcVal = row => calcQtd(row) * (row._custo || 0)
+
   // Totais por status — atualiza ao mudar cobertura ou filtros
   const totaisQ = useQuery({
     queryKey:  ['compras-totais', cobertura, dbSearch, grupoFilter, pedraFilter, tag2Filter, filialFilter],
@@ -118,6 +125,10 @@ export default function ComprasPage() {
         if (localSort === 'solicitado') {
           sa = pedidosMap[a.produto]?.qtd || 0
           sb = pedidosMap[b.produto]?.qtd || 0
+        } else if (localSort === 'qtdSug') {
+          sa = calcQtd(a); sb = calcQtd(b)
+        } else if (localSort === 'valRepor') {
+          sa = calcVal(a); sb = calcVal(b)
         } else {
           sa = a[localSort] ?? 0
           sb = b[localSort] ?? 0
@@ -288,8 +299,8 @@ export default function ComprasPage() {
                           Pedido pendente{pedidosQ.isLoading ? <span style={{ fontSize: 9, marginLeft: 4, color: '#f5c518' }}>⏳</span> : <SortArrow col="solicitado" />}
                         </th>
                         <th style={{ color: '#818cf8', textAlign: 'center' }}>Dt. Pedido</th>
-                        <th style={{ color: '#f5c518', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_vend30')}>Qtd p/ {cobertura}d<SortArrow col="_vend30" /></th>
-                        <th style={{ color: '#f5c518', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_custo')}>R$<SortArrow col="_custo" /></th>
+                        <th style={{ color: '#f5c518', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('qtdSug')}>Qtd p/ {cobertura}d<SortArrow col="qtdSug" /></th>
+                        <th style={{ color: '#f5c518', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('valRepor')}>R$<SortArrow col="valRepor" /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -301,8 +312,8 @@ export default function ComprasPage() {
                         const pedInfo     = pedidosMap[row.produto]
                         const solicitado  = pedInfo?.qtd || 0
                         const datasPedido = pedInfo?.datas || []
-                        const qtdSug     = Math.max(0, Math.ceil((row._vend90 / 90) * cobertura) - row._saldo - solicitado)
-                        const valRepor   = qtdSug * (row._custo || 0)
+                        const qtdSug     = calcQtd(row)
+                        const valRepor   = calcVal(row)
                         const dde      = row._dde < 9999 ? row._dde : null
                         return (
                           <tr key={i}>
