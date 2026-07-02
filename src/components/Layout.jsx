@@ -9,8 +9,8 @@ import FloatingActions from './FloatingActions'
 const NAV = [
   { to: '/',            label: 'Dashboard',    end: true,  Icon: IconGrid,      chave: 'dashboard' },
   { to: '/sugestoes',   label: 'Curva ABC',               Icon: IconBulb,      chave: 'curva_abc' },
-  { to: '/compras',     label: 'Compras',                  Icon: IconCart,      chave: 'compras' },
-  { to: '/pedidos',     label: 'Pedidos',                  Icon: IconClipboard, chave: 'pedidos' },
+  { to: '/compras',     label: 'Sugestão de Compra',       Icon: IconCart,      chave: 'compras' },
+  { to: '/pedidos',     label: 'Pedidos de Compras',       Icon: IconClipboard, chave: 'pedidos' },
   { to: '/fornecedores',label: 'Fornecedores',             Icon: IconTruck,     chave: 'fornecedores' },
   { to: '/clientes',    label: 'Clientes',                 Icon: IconUser,      chave: 'clientes' },
   { to: '/assistencias',label: 'Assistências',             Icon: IconWrench,    chave: 'assistencias' },

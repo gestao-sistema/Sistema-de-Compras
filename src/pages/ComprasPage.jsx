@@ -259,18 +259,17 @@ export default function ComprasPage() {
                   <table className="tbl" style={{ tableLayout: 'fixed', width: '100%' }}>
                     <colgroup>
                       <col style={{ width: 50 }} />   {/* foto */}
-                      <col style={{ width: 130 }} />  {/* código */}
-                      <col style={{ width: 210 }} />  {/* descrição */}
-                      <col style={{ width: 90 }} />   {/* grupo */}
+                      <col style={{ width: 95 }} />   {/* código */}
+                      <col style={{ width: 160 }} />  {/* descrição */}
                       <col style={{ width: 70 }} />   {/* saldo */}
                       <col style={{ width: 70 }} />   {/* disp */}
                       <col style={{ width: 60 }} />   {/* almox 1 */}
                       <col style={{ width: 60 }} />   {/* almox 4 */}
                       <col style={{ width: 70 }} />   {/* vend 30d */}
                       <col style={{ width: 60 }} />   {/* DDE */}
-                      <col style={{ width: 80 }} />   {/* solicitado */}
+                      <col style={{ width: 120 }} />  {/* pedido pendente */}
                       <col style={{ width: 95 }} />   {/* dt. pedido */}
-                      <col style={{ width: 90 }} />   {/* qtd sugerida */}
+                      <col style={{ width: 115 }} />  {/* qtd sugerida */}
                       <col style={{ width: 100 }} />  {/* val. repor */}
                     </colgroup>
                     <thead>
@@ -278,16 +277,15 @@ export default function ComprasPage() {
                         <th style={{ color: 'var(--text-muted)' }}>Foto</th>
                         <th style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => toggleSort('produto')}>Código<SortArrow col="produto" /></th>
                         <th style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => toggleSort('descricao')}>Descrição<SortArrow col="descricao" /></th>
-                        <th style={{ color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => toggleSort('grupo')}>Grupo<SortArrow col="grupo" /></th>
                         <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_saldo')}>Saldo<SortArrow col="_saldo" /></th>
                         <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp')}>Disp.<SortArrow col="_saldoDisp" /></th>
                         <th style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: 10, cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp01')}>Alm. 1<SortArrow col="_saldoDisp01" /></th>
                         <th style={{ color: 'var(--text-muted)', textAlign: 'center', fontSize: 10, cursor: 'pointer' }} onClick={() => toggleSort('_saldoDisp04')}>Alm. 4<SortArrow col="_saldoDisp04" /></th>
                         <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_vend30')}>Vend. 30D<SortArrow col="_vend30" /></th>
                         <th style={{ color: 'var(--text-muted)', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_dde')}>DDE<SortArrow col="_dde" /></th>
-                        <th style={{ color: '#818cf8', textAlign: 'center', cursor: pedidosQ.isLoading ? 'wait' : 'pointer' }}
+                        <th style={{ color: '#818cf8', textAlign: 'center', whiteSpace: 'nowrap', cursor: pedidosQ.isLoading ? 'wait' : 'pointer' }}
                           onClick={() => !pedidosQ.isLoading && toggleSort('solicitado')}>
-                          Solicitado{pedidosQ.isLoading ? <span style={{ fontSize: 9, marginLeft: 4, color: '#f5c518' }}>⏳</span> : <SortArrow col="solicitado" />}
+                          Pedido pendente{pedidosQ.isLoading ? <span style={{ fontSize: 9, marginLeft: 4, color: '#f5c518' }}>⏳</span> : <SortArrow col="solicitado" />}
                         </th>
                         <th style={{ color: '#818cf8', textAlign: 'center' }}>Dt. Pedido</th>
                         <th style={{ color: '#f5c518', textAlign: 'center', cursor: 'pointer' }} onClick={() => toggleSort('_vend30')}>Qtd p/ {cobertura}d<SortArrow col="_vend30" /></th>
@@ -296,14 +294,14 @@ export default function ComprasPage() {
                     </thead>
                     <tbody>
                       {rows.length === 0 && !isFetching && (
-                        <tr><td colSpan={14}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
+                        <tr><td colSpan={13}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
                       )}
                       {rows.map((row, i) => {
                         const urgencia    = row._saldo === 0 && row._vend30 > 0 ? 'ruptura' : 'risco'
                         const pedInfo     = pedidosMap[row.produto]
                         const solicitado  = pedInfo?.qtd || 0
                         const datasPedido = pedInfo?.datas || []
-                        const qtdSug     = Math.max(0, Math.ceil((row._vend30 / 30) * cobertura) - row._saldo - solicitado)
+                        const qtdSug     = Math.max(0, Math.ceil((row._vend90 / 90) * cobertura) - row._saldo - solicitado)
                         const valRepor   = qtdSug * (row._custo || 0)
                         const dde      = row._dde < 9999 ? row._dde : null
                         return (
@@ -326,7 +324,6 @@ export default function ComprasPage() {
                               </div>
                               <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 2 }}>{row.pedra || ''}{row.tag2 ? ` · ${row.tag2}` : ''}</div>
                             </td>
-                            <td style={{ color: '#00b4d8', fontSize: 12 }}>{row.grupo ?? '-'}</td>
                             <td style={{ textAlign: 'center', fontFamily: 'monospace', color: row._saldo === 0 ? '#f87171' : '#e8eaf0', fontWeight: row._saldo === 0 ? 700 : 400 }}>
                               {fNum(row._saldo)}
                             </td>
@@ -358,7 +355,7 @@ export default function ComprasPage() {
                             <td style={{ textAlign: 'center' }}>
                               {qtdSug > 0
                                 ? <span style={{ color: '#f5c518', fontWeight: 800, fontSize: 15 }}>{fNum(qtdSug)}</span>
-                                : <span style={{ color: '#4ade80', fontSize: 11 }}>✓ OK</span>}
+                                : <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 999, fontSize: 10, fontWeight: 600, letterSpacing: '0.02em', whiteSpace: 'nowrap', color: 'var(--text-dim)', background: 'var(--bg-input)', border: '1px solid var(--border2)' }}>não recomendado</span>}
                             </td>
                             <td style={{ textAlign: 'center', color: '#a3e635', fontWeight: 600 }}>
                               {valRepor > 0 ? fBRL(valRepor) : '—'}

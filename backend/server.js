@@ -969,7 +969,7 @@ app.get('/api/compras/totais', async (req, res) => {
 
     const calcQtd = i => {
       const solicitado = pedidosMap[i.produto] || 0
-      return Math.max(0, Math.ceil((i._vend30 / 30) * cobertura) - i._saldo - solicitado)
+      return Math.max(0, Math.ceil((i._vend90 / 90) * cobertura) - i._saldo - solicitado)
     }
 
     // só conta produtos que AINDA precisam de compra após descontar o solicitado
@@ -1006,7 +1006,7 @@ app.get('/api/compras/export', async (req, res) => {
     items.sort((a, b) => (a._dde ?? 9999) - (b._dde ?? 9999))
 
     const rows = items.map(i => {
-      const qtdSug   = Math.max(0, Math.ceil((i._vend30 / 30) * cobertura) - i._saldo)
+      const qtdSug   = Math.max(0, Math.ceil((i._vend90 / 90) * cobertura) - i._saldo)
       const valRepor = qtdSug * (i._custo || 0)
       return {
         status:    i._saldo === 0 && i._vend30 > 0 ? 'RUPTURA' : 'RISCO',
