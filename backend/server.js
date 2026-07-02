@@ -1149,11 +1149,13 @@ app.get('/api/dashboard', async (req, res) => {
     let ddeTotal   = 0, ddeCount  = 0
     let ativos = 0, vend30 = 0, vend60 = 0, vend90 = 0
     let vend30val = 0, vend60val = 0, vend90val = 0
+    let vendidaTotal = 0
 
     items.forEach(i => {
       saldoTotal     += i._saldo
       saldoDispTotal += i._saldoDisp
       valorTotal     += i._valorEst
+      vendidaTotal   += i._vendida
       vend30         += i._vend30
       vend60         += i._vend60
       vend90         += i._vend90
@@ -1180,6 +1182,7 @@ app.get('/api/dashboard', async (req, res) => {
       giroMedio:        giroCount > 0 ? giroTotal / giroCount : 0,
       ddeMedio:         ddeCount  > 0 ? ddeTotal  / ddeCount  : 0,
       produtosAtivos:   ativos,
+      totalVendidoUn:   vendidaTotal,
       vendasPorPeriodo: { d30: vend30, d60: vend60, d90: vend90, d30val: vend30val, d60val: vend60val, d90val: vend90val, prevD30, prevD30val },
     })
   } catch (e) { res.status(500).json({ error: e.message }) }

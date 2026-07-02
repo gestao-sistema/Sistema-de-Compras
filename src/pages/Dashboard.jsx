@@ -58,11 +58,6 @@ export default function Dashboard() {
 
   const d      = kpi.data || {}
   const loaded = d.loading === false
-  const vp     = d.vendasPorPeriodo || {}
-
-  // Comparativo 30d atual vs 30d anterior (dias 31-60)
-  const delta30val  = vp.prevD30val > 0 ? ((vp.d30val - vp.prevD30val) / vp.prevD30val * 100) : null
-  const delta30unit = vp.prevD30    > 0 ? ((vp.d30    - vp.prevD30   ) / vp.prevD30    * 100) : null
 
   const optionsQ = useQuery({
     queryKey:        ['produtos-options'],
@@ -120,13 +115,12 @@ export default function Dashboard() {
 
       <div className="page-body space-y-4">
         {/* KPIs */}
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
           <KPICard label="Saldo Atual"  value={fNum(d.saldoEstoque)}      sub="Estoque Atual"                    color="var(--text)" />
           <KPICard label="Disponível"   value={fNum(d.saldoDisponivel)}   sub="Estoque Disponível"               color="#00b4d8" />
           <KPICard label="Estoque"      value={fBRL(d.valorEstoque)}      sub="preço venda × qtd"                color="#a3e635" />
           <KPICard label="Custo Médio"  value={fBRL(d.custoMedio)}        sub="Σ(custo × saldo) / Σ saldo"      color="#a3e635" />
-          <KPICard label="Vendas 30D"   value={fBRL(vp.d30val)}           sub={`Período anterior: ${fBRL(vp.prevD30val)}`} color="#f5c518" delta={delta30val} />
-          <KPICard label="Unid. 30D"    value={fNum(vp.d30)}              sub={`Período anterior: ${fNum(vp.prevD30)}`}    color="#fb923c" delta={delta30unit} />
+          <KPICard label="Unid. Total"  value={fNum(d.totalVendidoUn)}    sub="Unidades vendidas (total)"       color="#fb923c" />
         </div>
 
         {/* Tabela */}
@@ -298,30 +292,6 @@ function KPICard({ label, value, sub, color, delta }) {
       </div>
       <div className="font-black tracking-tight" style={{ color, fontSize: 'clamp(16px, 2vw, 26px)', lineHeight: 1.1, margin: '6px 0 4px' }}>{value}</div>
       <div className="kpi-sub" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
-    </div>
-  )
-}
-
-function VendasPeriodo({ data }) {
-  const max  = data.d90val || 1
-  const bars = [
-    { label: '30 dias', value: data.d30val },
-    { label: '60 dias', value: data.d60val },
-    { label: '90 dias', value: data.d90val },
-  ]
-  return (
-    <div className="flex flex-col gap-3">
-      {bars.map(({ label, value }) => (
-        <div key={label}>
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</span>
-            <span className="text-sm font-bold" style={{ color: '#00b4d8' }}>{fBRL(value)}</span>
-          </div>
-          <div className="progress">
-            <div className="progress-bar" style={{ width: `${Math.round(((value || 0) / max) * 100)}%`, background: '#00b4d8' }} />
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
