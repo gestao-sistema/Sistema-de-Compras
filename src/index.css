@@ -132,6 +132,12 @@
   .tbl tbody td.num { @apply text-right font-mono; color: var(--text); }
   .tbl-clickable { @apply cursor-pointer; }
 
+  /* Variante compacta: cabe tudo numa página só, sem rolagem horizontal */
+  .tbl-compact { table-layout: fixed; }
+  .tbl-compact thead th { padding: 8px 6px; }
+  .tbl-compact tbody td { padding: 6px 6px; overflow: hidden; text-overflow: ellipsis; }
+  .tbl-compact .cut { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* Sobrescreve inline-styles hardcoded nas células de tabela no tema claro */
   [data-theme="light"] .tbl tbody td { color: var(--text-sec) !important; }
   [data-theme="light"] .tbl tbody td.num { color: var(--text) !important; }

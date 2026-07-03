@@ -26,6 +26,7 @@ export const api = {
   cliente:          (cpfcnpj)   => get('/blip/clientes', { cpfcnpj }),
   assistencias:     (cpfcnpj, limit) => get('/blip/assistencia', { cpfcnpj, limit }),
   assistenciaItens: (id, cpfcnpj)   => get(`/blip/assistencia/itens/${id}`, { cpfcnpj }),
+  assistenciasGeral:(status)         => get('/assistencias/geral', { status }),
   alertas:          ()               => get('/alertas'),
 }
 

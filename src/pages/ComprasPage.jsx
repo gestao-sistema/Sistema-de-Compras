@@ -308,7 +308,7 @@ export default function ComprasPage() {
                         <tr><td colSpan={13}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
                       )}
                       {rows.map((row, i) => {
-                        const urgencia    = row._saldo === 0 && row._vend30 > 0 ? 'ruptura' : 'risco'
+                        const urgencia    = row._saldo <= 0 && row._vend30 > 0 ? 'ruptura' : 'risco'
                         const pedInfo     = pedidosMap[row.produto]
                         const solicitado  = pedInfo?.qtd || 0
                         const datasPedido = pedInfo?.datas || []
@@ -335,7 +335,7 @@ export default function ComprasPage() {
                               </div>
                               <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 2 }}>{row.pedra || ''}{row.tag2 ? ` · ${row.tag2}` : ''}</div>
                             </td>
-                            <td style={{ textAlign: 'center', fontFamily: 'monospace', color: row._saldo === 0 ? '#f87171' : '#e8eaf0', fontWeight: row._saldo === 0 ? 700 : 400 }}>
+                            <td style={{ textAlign: 'center', fontFamily: 'monospace', color: row._saldo <= 0 ? '#f87171' : '#e8eaf0', fontWeight: row._saldo <= 0 ? 700 : 400 }}>
                               {fNum(row._saldo)}
                             </td>
                             <td style={{ textAlign: 'center', fontFamily: 'monospace', color: '#00b4d8' }}>{fNum(row._saldoDisp)}</td>

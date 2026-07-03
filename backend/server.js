@@ -220,7 +220,9 @@ function buildRow(pai, v) {
   const saldoD04 = n(item.estoque_disponivel_04)
   const saldo    = (saldo01 + saldo04) || n(item.estoque_atual)
   const saldoD   = (saldoD01 + saldoD04) || n(item.estoque_disponivel)
-  const valorEst = n(item.valor_estoque_atual_01) + n(item.valor_estoque_atual_04) || n(item.valor_estoque_atual)
+  const valorEst01 = n(item.valor_estoque_atual_01)
+  const valorEst04 = n(item.valor_estoque_atual_04)
+  const valorEst = (valorEst01 + valorEst04) || n(item.valor_estoque_atual)
   // usa sempre o código filho quando existir — o || pai.x causava herdar o total do pai
   // (soma de todas as variações) para filhos com 0 vendas, inflando os cálculos
   const vendida  = v ? n(v.qtd_vendida)           : n(pai.qtd_vendida)
@@ -270,6 +272,8 @@ function buildRow(pai, v) {
     _saldo04:    saldo04,
     _saldoDisp04:saldoD04,
     _valorEst:   valorEst,
+    _valorEst01: valorEst01,
+    _valorEst04: valorEst04,
     _vendida:    vendida,
     _vend30:     vend30,
     _vend60:     vend60,
@@ -592,7 +596,7 @@ function _computeFornecedores(prods, pedidosItens, dataInicio, dataFim, fornFilt
         valorVendaPot+= vVendaPot
         if (ped.pedidos) ped.pedidos.forEach(n => pedidosSet.add(n))
 
-        const isRuptura = (p._saldo || 0) === 0 && (p._vend30 || 0) > 0 && (p._vend90 || 0) > 0
+        const isRuptura = (p._saldo || 0) <= 0 && (p._vend30 || 0) > 0 && (p._vend90 || 0) > 0
         const isRisco   = (p._saldo || 0) > 0 && (p._dde || 9999) < 30 && (p._dde || 9999) < 9999 && (p._vend90 || 0) > 0
 
         return {
@@ -852,14 +856,15 @@ app.get('/api/produtos/options', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Aplica visão de filial — sobrescreve _saldo/_saldoDisp conforme seleção
+// Aplica visão de filial — sobrescreve _saldo/_saldoDisp/_valorEst conforme seleção
 function applyFilial(items, filial) {
   if (!filial || filial === 'todos') return items
   return items.map(i => {
     const s  = filial === '01' ? i._saldo01  : i._saldo04
     const sd = filial === '01' ? i._saldoDisp01 : i._saldoDisp04
+    const ve = filial === '01' ? i._valorEst01 : i._valorEst04
     const dde = i._vend30 > 0 && sd > 0 ? Math.round(sd / (i._vend30 / 30)) : (i._vend30 > 0 && sd === 0 ? 0 : 9999)
-    return { ...i, _saldo: s, _saldoDisp: sd, _dde: dde }
+    return { ...i, _saldo: s, _saldoDisp: sd, _valorEst: ve, _dde: dde }
   })
 }
 
@@ -882,7 +887,7 @@ app.get('/api/produtos', async (req, res) => {
       if (tipo !== 'todos') grpItems = grpItems.filter(i => tipo === 'novo' ? i.isNovo : !i.isNovo)
       if (rf)    grpItems = grpItems.filter(i => rf === 'risco' ? (i._dde < 30 && i._dde < 9999) : rf === 'ruptura' ? i._dde === 0 : true)
       if (esf === 'com')   grpItems = grpItems.filter(i => i._saldo > 0)
-      if (esf === 'sem')   grpItems = grpItems.filter(i => i._saldo === 0)
+      if (esf === 'sem')   grpItems = grpItems.filter(i => i._saldo <= 0)
       if (esf === 'baixo') grpItems = grpItems.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999)
       const map = {}
       grpItems.forEach(i => {
@@ -921,15 +926,15 @@ app.get('/api/produtos', async (req, res) => {
 
     const totalNovo      = items.filter(i => i.isNovo === true).length
     const totalReposicao = items.filter(i => i.isNovo === false).length
-    const totalRuptura   = items.filter(i => (i._saldo === 0 && i._vend30 > 0) || (i._dde < 30 && i._dde < 9999)).length
+    const totalRuptura   = items.filter(i => (i._saldo <= 0 && i._vend30 > 0) || (i._dde < 30 && i._dde < 9999)).length
 
     if (tipo === 'novo')       items = items.filter(i => i.isNovo === true)
     if (tipo === 'reposicao')  items = items.filter(i => i.isNovo === false)
-    if (rf === 'ruptura')      items = items.filter(i => i._saldo === 0 && i._vend30 > 0 && i._vend90 > 0)
+    if (rf === 'ruptura')      items = items.filter(i => i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0)
     if (rf === 'risco')        items = items.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0)
-    if (rf === 'normalizado')  items = items.filter(i => !(i._saldo === 0 && i._vend30 > 0 && i._vend90 > 0) && !(i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0))
+    if (rf === 'normalizado')  items = items.filter(i => !(i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0) && !(i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0))
     if (esf === 'com')         items = items.filter(i => i._saldo > 0)
-    if (esf === 'sem')         items = items.filter(i => i._saldo === 0)
+    if (esf === 'sem')         items = items.filter(i => i._saldo <= 0)
     if (esf === 'baixo')       items = items.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999)
 
     items = [...items].sort((a, b) => {
@@ -973,7 +978,7 @@ app.get('/api/compras/totais', async (req, res) => {
     }
 
     // só conta produtos que AINDA precisam de compra após descontar o solicitado
-    const rupturaItems = items.filter(i => i._saldo === 0 && i._vend30 > 0 && i._vend90 > 0 && calcQtd(i) > 0)
+    const rupturaItems = items.filter(i => i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0 && calcQtd(i) > 0)
     const riscoItems   = items.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0 && calcQtd(i) > 0)
 
     const valorRuptura = rupturaItems.reduce((s, i) => s + calcQtd(i) * (i._custo || 0), 0)
@@ -999,9 +1004,9 @@ app.get('/api/compras/export', async (req, res) => {
     if (gf) items = items.filter(i => (i.grupo || '').toLowerCase() === gf.toLowerCase())
     if (pf) items = items.filter(i => (i.pedra || '').toLowerCase() === pf.toLowerCase())
     if (tf) items = items.filter(i => (i.tag2  || '').toLowerCase() === tf.toLowerCase())
-    if (rf === 'ruptura') items = items.filter(i => i._saldo === 0 && i._vend30 > 0 && i._vend90 > 0)
+    if (rf === 'ruptura') items = items.filter(i => i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0)
     if (rf === 'risco')   items = items.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0)
-    if (rf === 'todos')   items = items.filter(i => (i._saldo === 0 && i._vend30 > 0 && i._vend90 > 0) || (i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0))
+    if (rf === 'todos')   items = items.filter(i => (i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0) || (i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0))
 
     items.sort((a, b) => (a._dde ?? 9999) - (b._dde ?? 9999))
 
@@ -1009,7 +1014,7 @@ app.get('/api/compras/export', async (req, res) => {
       const qtdSug   = Math.max(0, Math.ceil((i._vend90 / 90) * cobertura) - i._saldo)
       const valRepor = qtdSug * (i._custo || 0)
       return {
-        status:    i._saldo === 0 && i._vend30 > 0 ? 'RUPTURA' : 'RISCO',
+        status:    i._saldo <= 0 && i._vend30 > 0 ? 'RUPTURA' : 'RISCO',
         codigo:    i.produtoBase || i.produto || '',
         variacao:  i.produto || '',
         descricao: i.descricao || '',
@@ -1035,8 +1040,8 @@ app.get('/api/sugestoes', async (req, res) => {
   try {
     const items = (await getProdutos()).map(i => ({ ...i }))
     items.sort((a, b) => {
-      const ua = a._saldo === 0 && (a._vend30 > 0 || a._vendida > 0) ? 0 : a._dde
-      const ub = b._saldo === 0 && (b._vend30 > 0 || b._vendida > 0) ? 0 : b._dde
+      const ua = a._saldo <= 0 && (a._vend30 > 0 || a._vendida > 0) ? 0 : a._dde
+      const ub = b._saldo <= 0 && (b._vend30 > 0 || b._vendida > 0) ? 0 : b._dde
       return ua - ub
     })
     res.json(items)
@@ -1136,11 +1141,11 @@ app.get('/api/dashboard', async (req, res) => {
     if (tf)  items = items.filter(i => (i.tag2  || '').toLowerCase() === tf.toLowerCase())
     if (tipo === 'novo')      items = items.filter(i => i.isNovo === true)
     if (tipo === 'reposicao') items = items.filter(i => i.isNovo === false)
-    if (rf === 'ruptura')     items = items.filter(i => i._saldo === 0 && i._vend30 > 0 && i._vend90 > 0)
+    if (rf === 'ruptura')     items = items.filter(i => i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0)
     if (rf === 'risco')       items = items.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0)
-    if (rf === 'normalizado') items = items.filter(i => !(i._saldo === 0 && i._vend30 > 0 && i._vend90 > 0) && !(i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0))
+    if (rf === 'normalizado') items = items.filter(i => !(i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0) && !(i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0))
     if (esf === 'com')        items = items.filter(i => i._saldo > 0)
-    if (esf === 'sem')        items = items.filter(i => i._saldo === 0)
+    if (esf === 'sem')        items = items.filter(i => i._saldo <= 0)
     if (esf === 'baixo')      items = items.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999)
 
     let saldoTotal = 0, saldoDispTotal = 0, valorTotal = 0
@@ -1212,6 +1217,147 @@ app.get('/api/blip/assistencia/itens/:id', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── Assistências (visão geral) ─────────────────────────────────────────────────
+// Endpoint pesado (~24 MB). Cache próprio de 15 min. Agrega cards + linhas por produto.
+
+let _assistCache = null, _assistCacheAt = 0
+const ASSIST_TTL = 15 * 60 * 1000
+
+async function fetchAssistenciasGeral() {
+  if (_assistCache && Date.now() - _assistCacheAt < ASSIST_TTL) return _assistCache
+  const { data } = await axios.get(`${COMPRAS_BASE}/assistencias/geral`, {
+    headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 300000, decompress: true,
+  })
+  _assistCache = data
+  _assistCacheAt = Date.now()
+  return data
+}
+
+// "28/04/2026" ou "28/04/2026 00:00:00" → Date (ou null)
+function parseBRDate(s) {
+  if (!s) return null
+  const m = String(s).trim().match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (!m) return null
+  const d = new Date(+m[3], +m[2] - 1, +m[1])
+  return isNaN(d.getTime()) ? null : d
+}
+const diasEntre = (a, b) => Math.round((b - a) / 86400000)
+
+// status_assistencia: "Aberta" = em aberto; demais (Fechada/Cancelada/Resíduo/…) = encerrada
+const isAberta = st => /abert/i.test(String(st || ''))
+
+function buildAssistencias(geral, filtroStatus = 'abertas') {
+  const clientes = Array.isArray(geral?.clientes) ? geral.clientes : []
+  const hoje = new Date()
+
+  let ossAbertas = 0, ossEncerradas = 0, produtosAbertos = 0
+  let valorAberto = 0, valorFechado = 0
+  let slaSoma = 0, slaBase = 0
+
+  const rows = []
+
+  for (const cli of clientes) {
+    for (const os of (cli.assistencias_cliente || [])) {
+      const produtos = os.produtos || []
+      const valorOss = produtos.reduce((s, p) => {
+        const sv = (p.servico || [])[0] || {}
+        const u = Number(sv.valor_unitario) || 0, pg = Number(sv.peso_total_gramas) || 0, q = Number(p.quantidade) || 0
+        return s + (pg > 0 ? u * pg : u) * q
+      }, 0)
+      const entrada  = parseBRDate(os.emissao)
+
+      // Data de encerramento = maior data_retorno entre as assistências do fornecedor
+      let dataRetorno = null
+      for (const f of (os.assistencia_fornecedor || [])) {
+        const d = parseBRDate(f.data_retorno)
+        if (d && (!dataRetorno || d > dataRetorno)) dataRetorno = d
+      }
+      // Encerrada = tem data de encerramento (data_retorno); sem ela, está em aberto
+      const aberta = !dataRetorno
+      // Tem OSS do fornecedor? (assistência do fornecedor gerada)
+      const temForn = (os.assistencia_fornecedor || []).length > 0
+      // Fornecedor da OSS (nome) para fallback quando o produto não tem serviço
+      const fornOss = (os.assistencia_fornecedor || [])[0] || {}
+
+      if (aberta) {
+        ossAbertas++; produtosAbertos += produtos.length; valorAberto += valorOss
+        // SLA = tempo médio em aberto (aging): hoje − emissão das OSS abertas
+        if (entrada) {
+          const dias = diasEntre(entrada, hoje)
+          if (dias >= 0) { slaSoma += dias; slaBase++ }
+        }
+      } else {
+        ossEncerradas++; valorFechado += valorOss
+      }
+
+      // Filtro de quais linhas retornar
+      if (filtroStatus === 'abertas'    && !aberta) continue
+      if (filtroStatus === 'encerradas' &&  aberta) continue
+
+      // Dias em aberto: conta da entrada até hoje; para de contar quando há data de encerramento (data_retorno)
+      const diasEmAberto  = entrada ? Math.max(0, diasEntre(entrada, dataRetorno || hoje)) : null
+      const diasDuracao   = (entrada && dataRetorno) ? Math.max(0, diasEntre(entrada, dataRetorno)) : null
+
+      for (const p of produtos) {
+        const serv = (p.servico || [])[0] || {}
+        const valorUnit = Number(serv.valor_unitario) || 0
+        const peso      = Number(serv.peso_total_gramas) || 0
+        const qtd       = Number(p.quantidade) || 0
+        // Serviço por grama (peso>0): unit × peso. Serviço por peça (peso=0): unit.
+        const valorServ = peso > 0 ? valorUnit * peso : valorUnit
+        rows.push({
+          cliente:         cli.cliente,
+          clienteNome:     cli.nome_cliente || cli.fantasia_cliente || '',
+          osCliente:       os.codigo,
+          statusOss:       os.status_assistencia || '',
+          aberta,
+          temForn,
+          produtoCod:      p.produto,
+          produto:         p.descricao || '',
+          codBarras:       p.cod_barras || '',
+          quantidade:      qtd,
+          statusProduto:   p.situacao || p.ult_situacao_servico || '',
+          fornecedor:      serv.nfornecedor_servico?.trim() || fornOss.nfornecedor?.trim() || '',
+          fornecedorCod:   serv.fornecedor_servico || fornOss.fornecedor || '',
+          osFornecedor:    serv.assistencia_fornecedor || fornOss.codigo || '',
+          servicoDesc:     serv.descricao_servico?.trim() || '',
+          valorUnit,
+          peso,
+          valor:           valorServ,          // valor do serviço (por grama: unit×peso; por peça: unit)
+          valorTotal:      valorServ * qtd,     // valor total = valor serviço × quantidade
+          dataEntrada:     os.emissao || '',
+          diasEmAberto,
+          dataEncerramento: dataRetorno ? dataRetorno.toLocaleDateString('pt-BR') : '',
+          diasDuracao,
+        })
+      }
+    }
+  }
+
+  return {
+    updatedAt: new Date().toISOString(),
+    cards: {
+      ossAbertas,
+      ossEncerradas,
+      produtosAbertos,
+      slaMedio:   slaBase > 0 ? Math.round(slaSoma / slaBase) : 0,
+      slaBase,
+      valorAberto,
+      valorFechado,
+      valorTotal: valorAberto + valorFechado,
+    },
+    rows,
+  }
+}
+
+app.get('/api/assistencias/geral', async (req, res) => {
+  try {
+    const geral = await fetchAssistenciasGeral()
+    const status = ['abertas', 'encerradas', 'todas'].includes(req.query.status) ? req.query.status : 'abertas'
+    res.json(buildAssistencias(geral, status))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 // ─── Alertas de ruptura ───────────────────────────────────────────────────────
 app.get('/api/alertas', async (req, res) => {
   try {
@@ -1234,7 +1380,7 @@ app.get('/api/alertas', async (req, res) => {
     }
 
     const ruptura = all
-      .filter(i => i._saldo === 0 && (i._vend30 ?? 0) > 0 && !cobertoPorPedido(i))
+      .filter(i => i._saldo <= 0 && (i._vend30 ?? 0) > 0 && !cobertoPorPedido(i))
       .sort((a, b) => (b._vend30 ?? 0) - (a._vend30 ?? 0))
       .slice(0, 50)
       .map(i => ({ produto: i.produto, descricao: i.descricao, grupo: i.grupo, vend30: i._vend30, foto: i._foto, nomeFornecedor: i.nomeFornecedor }))

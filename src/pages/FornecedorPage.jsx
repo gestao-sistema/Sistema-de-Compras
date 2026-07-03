@@ -410,7 +410,7 @@ function TodosProdutos({ produtos, sortBy }) {
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.descricao}>{p.descricao}</div>
                 </td>
                 <td style={{ ...td, textAlign: 'center', fontSize: 11, color: '#00b4d8' }}>{p.grupo}</td>
-                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: p.saldo === 0 ? '#f87171' : 'var(--text)' }}>{fNum(p.saldo)}</td>
+                <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: p.saldo <= 0 ? '#f87171' : 'var(--text)' }}>{fNum(p.saldo)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', color: isTop7 ? '#f5c518' : 'var(--text)', fontWeight: isTop7 ? 800 : 400 }}>{fNum(p.vendida)}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#f87171' }}>{(p.custo ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td style={{ ...td, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#f87171', fontWeight: 700 }}>{fBRL(p.custoVendas)}</td>

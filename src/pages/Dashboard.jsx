@@ -539,7 +539,7 @@ function PlaceholderFoto() {
 }
 
 function RupturaBadge({ dde, saldo, vend30 }) {
-  if (saldo === 0 && vend30 > 0) return <span className="badge badge-risco">CRÍTICO</span>
+  if (saldo <= 0 && vend30 > 0) return <span className="badge badge-risco">CRÍTICO</span>
   if (dde < 30 && dde < 9999)   return <span className="badge badge-alerta">ATENÇÃO</span>
   if (dde < 9999)                return <span className="badge badge-ok">DISPONÍVEL</span>
   return <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>S/V</span>

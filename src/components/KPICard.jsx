@@ -5,6 +5,7 @@ export default function KPICard({ label, value, sub, color = 'yellow', icon }) {
     green:  '#4ade80',
     red:    '#f87171',
     orange: '#fb923c',
+    purple: '#a78bfa',
   }
   const c = colors[color] ?? colors.yellow
 
