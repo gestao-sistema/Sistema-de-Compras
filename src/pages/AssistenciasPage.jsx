@@ -5,6 +5,13 @@ import KPICard from '../components/KPICard'
 
 const fBRL2 = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0)
 
+// "30/04/2026" → "30 abr 2026" (data por extenso)
+const MESES_EXT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+function fDataExt(s) {
+  const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  return m ? `${m[1]} ${MESES_EXT[+m[2] - 1]} ${m[3]}` : (s || '')
+}
+
 const UNID = '#f5c518'  // quantidade (amarelo)
 // Identidade de cor por coluna
 const PROD = '#38bdf8'  // Produto  → azul
@@ -174,11 +181,9 @@ export default function AssistenciasPage() {
             {temFiltro && (
               <button onClick={limparFiltros} className="btn-ghost text-xs self-end">✕ Limpar filtros</button>
             )}
-            <div className="ml-auto flex items-center gap-3 self-end">
-              {q.isFetching && <span className="text-xs" style={{ color: 'var(--text-dim)' }}>atualizando…</span>}
-              <input value={busca} onChange={e => setBusca(e.target.value)}
-                placeholder="Cliente, produto, fornecedor…" className="inp w-64 text-xs" />
-            </div>
+            {q.isFetching && (
+              <span className="ml-auto self-end text-xs" style={{ color: 'var(--text-dim)' }}>atualizando…</span>
+            )}
           </div>
 
           {q.isLoading && (
@@ -377,14 +382,14 @@ function Tabela({ rows, sortK, sortD, onSort, statusFiltro }) {
     <div className="tbl-scroll" style={{ maxHeight: '62vh', overflowX: 'hidden' }}>
       <table className="tbl tbl-compact" style={{ width: '100%' }}>
         <colgroup>
-          <col style={{ width: '12%' }} />{/* Produto */}
+          <col style={{ width: '11%' }} />{/* Produto */}
           <col style={{ width: '11%' }} />{/* Cliente */}
-          <col style={{ width: '10%' }} />{/* Fornecedor */}
-          <col style={{ width: '11%' }} />{/* Serviço */}
-          <col style={{ width: '7%'  }} />{/* Status */}
-          <col style={{ width: '6%'  }} />{/* Entrada */}
+          <col style={{ width: '9%'  }} />{/* Fornecedor */}
+          <col style={{ width: '9%'  }} />{/* Serviço */}
+          <col style={{ width: '6%'  }} />{/* Status */}
+          <col style={{ width: '8%'  }} />{/* Dt Entrada */}
+          <col style={{ width: '8%'  }} />{/* Dt Encerrada */}
           <col style={{ width: '6%'  }} />{/* Dias em aberto */}
-          <col style={{ width: '6%'  }} />{/* Encerrada em */}
           <col style={{ width: '5%'  }} />{/* Durou */}
           <col style={{ width: '6%'  }} />{/* R$ Unit */}
           <col style={{ width: '5%'  }} />{/* Peso */}
@@ -398,12 +403,12 @@ function Tabela({ rows, sortK, sortD, onSort, statusFiltro }) {
             <TH k="fornecedor"    label="Fornecedor" {...thp} />
             <TH k="servicoDesc"   label="Serviço" {...thp} />
             <TH k="statusProduto" label="Status" {...thp} />
-            <TH k="dataEntrada"   label="Entrada" align="center" {...thp} />
-            <TH k="diasEmAberto"  label="Dias aberto" align="center" {...thp} />
-            {mostrarEncerramento && <TH k="dataEncerramento" label="Encerrada" align="center" {...thp} />}
+            <TH k="dataEntrada"   label="Dt Entr." align="center" {...thp} />
+            {mostrarEncerramento && <TH k="dataEncerramento" label="Dt. Encerr." align="center" {...thp} />}
+            <TH k="diasEmAberto"  label="Dias Ab" align="center" {...thp} />
             {mostrarEncerramento && <TH k="diasDuracao"      label="Durou" align="center" {...thp} />}
             <TH k="valorUnit"     label="R$ Unit." align="right" {...thp} />
-            <TH k="peso"          label="Peso (g)" align="right" {...thp} />
+            <TH k="peso"          label="Peso" align="right" {...thp} />
             <TH k="valor"         label="R$ Serviço" align="right" {...thp} />
             <TH k="valorTotal"    label="R$ Total" align="right" {...thp} />
           </tr>
@@ -452,31 +457,31 @@ function Tabela({ rows, sortK, sortD, onSort, statusFiltro }) {
                     {r.statusProduto || '-'}
                   </span>
                 </td>
-                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5 }}>{r.dataEntrada || '-'}</td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5 }}>{r.dataEntrada ? fDataExt(r.dataEntrada) : '-'}</td>
+                {mostrarEncerramento && (
+                  <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: r.dataEncerramento ? '#4ade80' : 'var(--text-dim)' }}>
+                    {r.dataEncerramento ? fDataExt(r.dataEncerramento) : '—'}
+                  </td>
+                )}
                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: 11.5,
                              color: r.dataEncerramento ? 'var(--text-muted)' : diasColor(r.diasEmAberto) }}>
                   {r.diasEmAberto != null ? `${fNum(r.diasEmAberto)} d` : '—'}
                 </td>
                 {mostrarEncerramento && (
-                  <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: r.dataEncerramento ? '#4ade80' : 'var(--text-dim)' }}>
-                    {r.dataEncerramento || '—'}
-                  </td>
-                )}
-                {mostrarEncerramento && (
                   <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-muted)' }}>
                     {r.diasDuracao != null ? `${fNum(r.diasDuracao)} d` : '—'}
                   </td>
                 )}
-                <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                <td style={{ textAlign: 'right', color: '#fb923c', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.valorUnit > 0 ? fBRL2(r.valorUnit) : '-'}
                 </td>
-                <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                <td style={{ textAlign: 'right', color: '#fb923c', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.peso > 0 ? `${fNum(r.peso, 2)} g` : '-'}
                 </td>
-                <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                <td style={{ textAlign: 'right', color: '#fb923c', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.valor > 0 ? fBRL2(r.valor) : '-'}
                 </td>
-                <td style={{ textAlign: 'right', color: '#a3e635', fontWeight: 700, fontFamily: 'monospace', fontSize: 11.5 }}>
+                <td style={{ textAlign: 'right', color: '#a3e635', fontWeight: 800, fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.valorTotal > 0 ? fBRL2(r.valorTotal) : '-'}
                 </td>
               </tr>
