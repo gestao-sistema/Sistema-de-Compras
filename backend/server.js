@@ -378,16 +378,20 @@ async function initialLoad() {
 // Loop contínuo: concluiu uma atualização → espera 10 min → reatualiza.
 async function refreshLoop() {
   await initialLoad()
-  // Pré-aquece pedidos e fornecedores em background após produtos carregarem
+  // Pré-aquece pedidos, fornecedores e assistências em background após produtos carregarem
   warmPedidosForn().catch(() => {})
+  warmAssistencias().catch(() => {})
   while (true) {
     await refresh()
     warmPedidosForn().catch(() => {})
+    warmAssistencias().catch(() => {})
     // Pausa de 10 min após concluir antes de iniciar a próxima atualização
     await new Promise(r => setTimeout(r, REFRESH_PAUSE))
   }
 }
 
+// Aquece as assistências imediatamente no boot, em paralelo ao catálogo
+warmAssistencias().catch(() => {})
 refreshLoop()
 
 // ─── endpoints ───────────────────────────────────────────────────────────────
@@ -466,6 +470,17 @@ async function warmPedidosForn() {
     console.log('[warm] pedidos e fornecedores prontos')
   } catch (e) {
     console.warn('[warm] erro:', e.message)
+  }
+}
+
+// Pré-aquece as assistências (~24 MB) para a tela abrir instantânea
+async function warmAssistencias() {
+  try {
+    console.log('[warm] pré-aquecendo assistências...')
+    await fetchAssistenciasGeral()
+    console.log('[warm] assistências prontas')
+  } catch (e) {
+    console.warn('[warm] assistências erro:', e.message)
   }
 }
 
@@ -1220,17 +1235,26 @@ app.get('/api/blip/assistencia/itens/:id', async (req, res) => {
 // ─── Assistências (visão geral) ─────────────────────────────────────────────────
 // Endpoint pesado (~24 MB). Cache próprio de 15 min. Agrega cards + linhas por produto.
 
-let _assistCache = null, _assistCacheAt = 0
+let _assistCache = null, _assistCacheAt = 0, _assistFetching = null
 const ASSIST_TTL = 15 * 60 * 1000
 
 async function fetchAssistenciasGeral() {
   if (_assistCache && Date.now() - _assistCacheAt < ASSIST_TTL) return _assistCache
-  const { data } = await axios.get(`${COMPRAS_BASE}/assistencias/geral`, {
-    headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 300000, decompress: true,
-  })
-  _assistCache = data
-  _assistCacheAt = Date.now()
-  return data
+  // Dedup: se já há um download em andamento, todos aguardam o mesmo
+  if (_assistFetching) return _assistFetching
+  _assistFetching = (async () => {
+    try {
+      const { data } = await axios.get(`${COMPRAS_BASE}/assistencias/geral`, {
+        headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 300000, decompress: true,
+      })
+      _assistCache = data
+      _assistCacheAt = Date.now()
+      return data
+    } finally {
+      _assistFetching = null
+    }
+  })()
+  return _assistFetching
 }
 
 // "28/04/2026" ou "28/04/2026 00:00:00" → Date (ou null)
