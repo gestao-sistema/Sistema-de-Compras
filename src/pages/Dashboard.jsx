@@ -152,7 +152,7 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-end gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
               {/* Tipo */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Tipo</div>
                 <div className="flex gap-1.5">
                   {[
                     { id: 'todos',     label: 'Todos' },
@@ -170,7 +170,7 @@ export default function Dashboard() {
 
               {/* Grupo */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Grupo</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Grupo</div>
                 <select value={grupoFilter} onChange={e => { setGrupoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
                   <option value="">Todos</option>
                   {opts.grupos.map(g => <option key={g} value={g}>{g}</option>)}
@@ -179,7 +179,7 @@ export default function Dashboard() {
 
               {/* Tipo de Pedra */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo de Pedra</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Tipo de Pedra</div>
                 <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 160 }}>
                   <option value="">Todas</option>
                   {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
@@ -188,7 +188,7 @@ export default function Dashboard() {
 
               {/* Categoria */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Categoria</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Categoria</div>
                 <select value={catFilter} onChange={e => { setCatFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 140 }}>
                   <option value="">Todas</option>
                   {opts.categorias.map(c => <option key={c} value={c}>{c}</option>)}
@@ -197,7 +197,7 @@ export default function Dashboard() {
 
               {/* TAG 2 */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>TAG 2</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>TAG 2</div>
                 <select value={tag2Filter} onChange={e => { setTag2Filter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 120 }}>
                   <option value="">Todas</option>
                   {opts.tag2s.map(t => <option key={t} value={t}>{t}</option>)}
@@ -206,7 +206,7 @@ export default function Dashboard() {
 
               {/* Estoque */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Estoque</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Estoque</div>
                 <select value={estoqueFilter} onChange={e => { setEstoqueFilter(e.target.value); setPage(0) }} className="inp text-xs"
                   style={{ minWidth: 150, borderColor: estoqueFilter === 'sem' ? '#f87171' : estoqueFilter === 'baixo' ? '#fb923c' : estoqueFilter === 'com' ? '#4ade80' : '#2a2d40', color: estoqueFilter === 'sem' ? '#f87171' : estoqueFilter === 'baixo' ? '#fb923c' : estoqueFilter === 'com' ? '#4ade80' : '#e8eaf0' }}>
                   <option value="">Todos</option>
@@ -219,7 +219,7 @@ export default function Dashboard() {
 
               {/* Ruptura */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Ruptura</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Ruptura</div>
                 <select value={rupturaFilter} onChange={e => changeRuptura(e.target.value)} className="inp text-xs"
                   style={{ minWidth: 160, borderColor: rupturaFilter === 'ruptura' ? '#f87171' : rupturaFilter === 'risco' ? '#fb923c' : '#2a2d40', color: rupturaFilter === 'ruptura' ? '#f87171' : rupturaFilter === 'risco' ? '#fb923c' : '#e8eaf0' }}>
                   <option value="">Todos</option>
@@ -231,7 +231,7 @@ export default function Dashboard() {
 
               {/* Código */}
               <div>
-                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Código</div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Código</div>
                 <input value={codigoFilter} onChange={e => setCodigoFilter(e.target.value)} placeholder="ex: 215894" className="inp text-xs" style={{ width: 120 }} />
               </div>
 

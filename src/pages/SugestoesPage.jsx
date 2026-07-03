@@ -98,28 +98,28 @@ export default function SugestoesPage() {
         <div className="card">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Grupo</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Grupo</div>
               <select value={grupoFilter} onChange={e => { setGrupoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
                 <option value="">Todos</option>
                 {opts.grupos.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo de Pedra</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Tipo de Pedra</div>
               <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 160 }}>
                 <option value="">Todas</option>
                 {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Fornecedor</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Fornecedor</div>
               <select value={fornFilter} onChange={e => { setFornFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 180 }}>
                 <option value="">Todos</option>
                 {opts.fornecedores.map(f => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Categoria</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Categoria</div>
               <select value={catFilter} onChange={e => { setCatFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 140 }}>
                 <option value="">Todas</option>
                 {opts.categorias.map(c => <option key={c} value={c}>{c}</option>)}
@@ -127,11 +127,11 @@ export default function SugestoesPage() {
             </div>
             <FilialSelector value={filialFilter} onChange={v => { setFilialFilter(v); setPage(0) }} />
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Código</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Código</div>
               <input value={codigoFilter} onChange={e => setCodigoFilter(e.target.value)} placeholder="ex: 215894" className="inp text-xs" style={{ width: 120 }} />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Descrição</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Descrição</div>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar…" className="inp text-xs" style={{ width: 170 }} />
             </div>
             {hasFilters && <button onClick={reset} className="btn-ghost text-xs self-end">✕ Limpar</button>}

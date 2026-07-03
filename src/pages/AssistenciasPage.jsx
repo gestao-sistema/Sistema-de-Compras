@@ -116,7 +116,8 @@ export default function AssistenciasPage() {
       if (!o.aberta)          ossEncerradas++       // tem data de encerramento
       else if (!o.temForn)    ossSolicitada++       // aberta e sem OSS de fornecedor
       else                    ossFornecedores++     // aberta, com fornecedor, sem retorno
-      if (o.aberta && o.dias != null) { slaSoma += o.dias; slaBase++ }
+      // SLA = média de dias em aberto de todas as OSS (aberta = até hoje; encerrada = até o retorno)
+      if (o.dias != null) { slaSoma += o.dias; slaBase++ }
     }
     return {
       ossEncerradas, ossSolicitada, ossFornecedores, totalSku,
@@ -139,12 +140,12 @@ export default function AssistenciasPage() {
     <div>
       <div className="page-body space-y-4">
         {/* Cards */}
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-          <KPICard label="OSS Encerradas"   value={fNum(cards.ossEncerradas)}   sub="com data de encerramento"        color="green"  icon="✓" />
-          <KPICard label="OSS Solicitada"   value={fNum(cards.ossSolicitada)}   sub="sem OSS de fornecedor"           color="orange" icon="◷" />
-          <KPICard label="OSS Fornecedores" value={fNum(cards.ossFornecedores)} sub="com fornecedor, sem retorno"     color="purple" icon="◭" />
+        <div className="grid gap-3 titulos-dourados" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+          <KPICard label="OS Encerradas"    value={fNum(cards.ossEncerradas)}   sub="com data de encerramento"        color="green"  icon="✓" />
+          <KPICard label="OS Solicitada"    value={fNum(cards.ossSolicitada)}   sub="sem OS de fornecedor"            color="orange" icon="◷" />
+          <KPICard label="OS Fornecedores"  value={fNum(cards.ossFornecedores)} sub="com fornecedor, sem retorno"     color="purple" icon="◭" />
           <KPICard label="Total SKU"        value={fNum(cards.totalSku)}        sub="itens de produto"                color="cyan"   icon="◈" />
-          <KPICard label="SLA"              value={`${fNum(cards.slaMedio)} d`}  sub={`${fNum(cards.slaBase)} OSS em aberto`} color="yellow" icon="⏱" />
+          <KPICard label="SLA"              value={`${fNum(cards.slaMedio)} d`}  sub="média de dias em aberto"         color="yellow" icon="⏱" />
           <CardValores cards={cards} />
         </div>
 
@@ -308,7 +309,7 @@ function MultiCombo({ value = [], onChange, options, placeholder = 'Todos', widt
 function Campo({ label, children }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
+      <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>{label}</div>
       {children}
     </div>
   )
@@ -362,7 +363,7 @@ function TH({ k, label, align = 'left', sortK, sortD, onSort }) {
       style={{ textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden',
                textOverflow: 'ellipsis', padding: '8px 6px', fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase',
                letterSpacing: '0.03em', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10 }}>
-      <span style={{ color: active ? '#f5c518' : '#6b7280' }}>{label}{active ? (sortD === 'asc' ? ' ▲' : ' ▼') : ''}</span>
+      <span style={{ color: 'var(--accent)', fontWeight: active ? 800 : 600 }}>{label}{active ? (sortD === 'asc' ? ' ▲' : ' ▼') : ''}</span>
     </th>
   )
 }
@@ -392,7 +393,7 @@ function Tabela({ rows, sortK, sortD, onSort, statusFiltro }) {
         </colgroup>
         <thead>
           <tr>
-            <TH k="produto"       label="Produto" {...thp} />
+            <TH k="produto"       label="SKU" {...thp} />
             <TH k="clienteNome"   label="Cliente" {...thp} />
             <TH k="fornecedor"    label="Fornecedor" {...thp} />
             <TH k="servicoDesc"   label="Serviço" {...thp} />
@@ -409,7 +410,7 @@ function Tabela({ rows, sortK, sortD, onSort, statusFiltro }) {
         </thead>
         <tbody>
           {rows.length === 0 && (
-            <tr><td colSpan={nCols}><div className="state-box text-sm">Nenhuma OSS encontrada</div></td></tr>
+            <tr><td colSpan={nCols}><div className="state-box text-sm">Nenhuma OS encontrada</div></td></tr>
           )}
           {rows.map((r, i) => {
             const sc = statusColor(r.statusProduto)

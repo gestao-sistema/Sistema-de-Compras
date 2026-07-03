@@ -132,6 +132,11 @@
   .tbl tbody td.num { @apply text-right font-mono; color: var(--text); }
   .tbl-clickable { @apply cursor-pointer; }
 
+  /* Títulos em dourado: rótulos de cards (kpi-label) e cabeçalhos de tabela */
+  .kpi-label { color: var(--accent); }
+  .tbl thead th, .tbl thead th span { color: var(--accent) !important; }
+  .tbl thead th:hover { color: var(--accent) !important; }
+
   /* Variante compacta: cabe tudo numa página só, sem rolagem horizontal */
   .tbl-compact { table-layout: fixed; }
   .tbl-compact thead th { padding: 8px 6px; }
