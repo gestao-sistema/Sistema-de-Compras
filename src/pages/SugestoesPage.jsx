@@ -262,9 +262,13 @@ function AbcChip({ label, count, active, onClick }) {
   )
 }
 
+// Carrega direto do servidor de fotos (desembrulha o proxy antigo)
 function proxFoto(url) {
-  if (!url || url.startsWith('/api/image-proxy')) return url
-  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  if (!url) return url
+  if (url.startsWith('/api/image-proxy')) {
+    const m = /[?&]url=([^&]+)/.exec(url)
+    return m ? decodeURIComponent(m[1]) : url
+  }
   return url
 }
 
@@ -286,7 +290,7 @@ function FotoZoom({ url, alt }) {
       onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setPos(null)}
     >
-      <img src={src} alt={alt} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, background: 'var(--bg-input)', display: 'block' }}
+      <img src={src} alt={alt} loading="lazy" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, background: 'var(--bg-input)', display: 'block' }}
         onError={() => setVisible(false)} />
       {pos && (
         <div className="foto-zoom-popup" style={{ left: pos.x + 16, top: Math.min(pos.y - 110, window.innerHeight - 230) }}>

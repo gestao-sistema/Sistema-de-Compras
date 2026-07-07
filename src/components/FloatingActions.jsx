@@ -138,10 +138,13 @@ function AlertaBell() {
   )
 }
 
+// Carrega direto do servidor de fotos (desembrulha o proxy antigo)
 function proxyFoto(url) {
   if (!url) return null
-  if (url.startsWith('/api/image-proxy')) return url
-  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  if (url.startsWith('/api/image-proxy')) {
+    const m = /[?&]url=([^&]+)/.exec(url)
+    return m ? decodeURIComponent(m[1]) : url
+  }
   return url
 }
 

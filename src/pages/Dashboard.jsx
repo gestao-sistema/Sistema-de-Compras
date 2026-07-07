@@ -499,9 +499,13 @@ function TabelaGrupo({ rows, label, isFetching }) {
 
 // ─── Foto com zoom ────────────────────────────────────────────────────────────
 
+// Carrega direto do servidor de fotos (desembrulha o proxy antigo)
 function proxFoto(url) {
-  if (!url || url.startsWith('/api/image-proxy')) return url
-  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  if (!url) return url
+  if (url.startsWith('/api/image-proxy')) {
+    const m = /[?&]url=([^&]+)/.exec(url)
+    return m ? decodeURIComponent(m[1]) : url
+  }
   return url
 }
 
@@ -516,7 +520,7 @@ function FotoZoom({ url, alt }) {
       onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setPos(null)}
     >
-      <img src={proxFoto(url)} alt={alt} className="rounded object-cover flex-shrink-0"
+      <img src={proxFoto(url)} alt={alt} loading="lazy" className="rounded object-cover flex-shrink-0"
         style={{ width: 36, height: 36, background: 'var(--bg-input)', display: 'block' }}
         onError={e => { e.target.style.display = 'none' }} />
       {pos && (

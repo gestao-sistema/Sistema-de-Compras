@@ -1,9 +1,13 @@
 import { useState } from 'react'
 
+// Carrega a foto DIRETO do servidor (o proxy do backend saturava na Railway).
+// Desembrulha URLs antigas no formato /api/image-proxy?url=...
 function proxyUrl(url) {
   if (!url) return null
-  if (url.startsWith('/api/image-proxy')) return url
-  if (url.startsWith('http')) return `/api/image-proxy?url=${encodeURIComponent(url)}`
+  if (url.startsWith('/api/image-proxy')) {
+    const m = /[?&]url=([^&]+)/.exec(url)
+    return m ? decodeURIComponent(m[1]) : url
+  }
   return url
 }
 
@@ -25,7 +29,7 @@ export default function FotoZoom({ url, alt, size = 40 }) {
       onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setPos(null)}
     >
-      <img src={src} alt={alt} style={{ width: size, height: size, objectFit: 'cover', borderRadius: 6, background: '#20223a', display: 'block' }}
+      <img src={src} alt={alt} loading="lazy" style={{ width: size, height: size, objectFit: 'cover', borderRadius: 6, background: '#20223a', display: 'block' }}
         onError={() => setVisible(false)} />
       {pos && (
         <div className="foto-zoom-popup" style={{ left: pos.x + 16, top: Math.min(pos.y - 110, window.innerHeight - 230) }}>
