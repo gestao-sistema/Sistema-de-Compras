@@ -53,12 +53,25 @@ function cacheSet(k, d) {
 
 function loadDiskCache() {
   try {
-    if (!fs.existsSync(DISK_CACHE)) return null
-    const raw  = fs.readFileSync(DISK_CACHE, 'utf8')
+    let raw = null
+    if (fs.existsSync(DISK_CACHE)) {
+      raw = fs.readFileSync(DISK_CACHE, 'utf8')
+    } else {
+      // Seed compactado versionado no repo — garante produtos no boot mesmo
+      // quando a API está instável (sem depender de fetch ao vivo no deploy).
+      const seed = path.join(__dirname, 'cache_seed.json.gz')
+      if (fs.existsSync(seed)) {
+        raw = require('zlib').gunzipSync(fs.readFileSync(seed)).toString('utf8')
+        console.log('[disk] usando seed compactado do repositório')
+      }
+    }
+    if (!raw) return null
     const obj  = JSON.parse(raw)
     const age  = Date.now() - obj.ts
-    if (age > DISK_MAX_AGE) { console.log('[disk] cache expirado, buscando API…'); return null }
-    console.log(`[disk] cache carregado: ${obj.data.length} produtos (${Math.round(age/60000)}min atrás)`)
+    // Serve o cache do disco mesmo se estiver antigo — melhor mostrar dados na hora
+    // (e atualizar em background) do que travar a tela quando a API está instável.
+    const tag = age > DISK_MAX_AGE ? 'ANTIGO — atualizando em background' : `${Math.round(age/60000)}min atrás`
+    console.log(`[disk] cache carregado: ${obj.data.length} produtos (${tag})`)
     cache.set('compras_all', { data: obj.data, ts: obj.ts })
     warmState.lastRefreshed = obj.ts  // mostra quando os dados realmente foram buscados
     return obj.data
