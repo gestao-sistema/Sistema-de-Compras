@@ -390,8 +390,6 @@ async function refreshLoop() {
   }
 }
 
-// Aquece as assistências imediatamente no boot, em paralelo ao catálogo
-warmAssistencias().catch(() => {})
 refreshLoop()
 
 // ─── endpoints ───────────────────────────────────────────────────────────────
