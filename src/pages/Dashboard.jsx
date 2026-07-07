@@ -315,17 +315,18 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
       <div className="tbl-scroll">
         <table className="tbl" style={{ tableLayout: 'fixed', width: '100%' }}>
           <colgroup>
+            <col style={{ width: 80 }} />
+            <col style={{ width: 110 }} />
             <col style={{ width: 85 }} />
-            <col style={{ width: 120 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 260 }} />
+            <col style={{ width: 220 }} />
+            <col style={{ width: 80 }} />
+            <col style={{ width: 95 }} />
             <col style={{ width: 85 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 85 }} />
-            <col style={{ width: 75 }} />
-            <col style={{ width: 75 }} />
+            <col style={{ width: 65 }} />
+            <col style={{ width: 65 }} />
             <col style={{ width: 70 }} />
-            <col style={{ width: 100 }} />
+            <col style={{ width: 105 }} />
+            <col style={{ width: 85 }} />
           </colgroup>
           <thead>
             <tr>
@@ -333,18 +334,19 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
               <TH k="pedra"       label="Tipo de Pedra" />
               <TH k="tag2"        label="TAG 2" />
               <TH k="descricao"   label="SKU" />
-              <TH k="_saldo"      label="Estoque"            align="center" />
-              <TH k="_saldoDisp"  label="Estoque Disponível" align="center" />
-              <TH k="_vend30"     label="Vend. 30D"    align="center" />
-              <TH k="_taxaSaida"  label="Saída"        align="center" />
-              <TH k="_dde"        label="DDE"          align="center" />
-              <TH k="_giro"       label="Giro"         align="center" />
-              <TH k="_preco"      label="PV UN"        align="center" />
+              <TH k="_saldo"      label="Estoque"     align="center" />
+              <TH k="_saldoDisp"  label="Disponível"  align="center" />
+              <TH k="_vend30"     label="Vend. 30D"   align="center" />
+              <TH k="_taxaSaida"  label="Saída"       align="center" />
+              <TH k="_dde"        label="DDE"         align="center" />
+              <TH k="_giro"       label="Giro"        align="center" />
+              <th className="px-3 py-2.5 text-xs font-semibold uppercase tracking-wider" style={{ textAlign: 'center' }}>Ruptura</th>
+              <TH k="_preco"      label="PV UN"       align="center" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !isFetching && (
-              <tr><td colSpan={11}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
+              <tr><td colSpan={12}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
             )}
             {rows.map((row, i) => (
               <tr key={i}>
@@ -379,6 +381,7 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
                 <td style={{ textAlign: 'center' }}>
                   {row._giro > 0 ? <span style={{ color: '#818cf8' }}>{fNum(row._giro, 1)}x</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
                 </td>
+                <td style={{ textAlign: 'center' }}><RupturaBadge dde={row._dde} saldo={row._saldo} vend30={row._vend30} /></td>
                 <td style={{ textAlign: 'center' }}>{row._preco > 0 ? fBRL(row._preco) : '-'}</td>
               </tr>
             ))}
@@ -539,8 +542,8 @@ function PlaceholderFoto() {
 }
 
 function RupturaBadge({ dde, saldo, vend30 }) {
-  if (saldo <= 0 && vend30 > 0) return <span className="badge badge-risco">CRÍTICO</span>
-  if (dde < 30 && dde < 9999)   return <span className="badge badge-alerta">ATENÇÃO</span>
+  if (saldo <= 0 && vend30 > 0) return <span className="badge badge-risco">RUPTURA</span>
+  if (dde < 30 && dde < 9999)   return <span className="badge badge-alerta">CRÍTICO</span>
   if (dde < 9999)                return <span className="badge badge-ok">DISPONÍVEL</span>
   return <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>S/V</span>
 }
