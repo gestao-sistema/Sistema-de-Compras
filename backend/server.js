@@ -114,7 +114,9 @@ async function fetchFromAPI() {
   if (_fetchingPromise) return _fetchingPromise
 
   _fetchingPromise = (async () => {
-    const PAGE        = 1000
+    // Páginas menores: respostas ~2 MB carregam de forma confiável na Railway
+    // (páginas de 1000 itens = ~8 MB penduravam a conexão do container).
+    const PAGE        = 250
     const MAX_RETRY   = 20   // tenta muito antes de desistir de uma página
     const all         = []
     let   page        = 1
@@ -133,7 +135,7 @@ async function fetchFromAPI() {
           const { data } = await axios.get(url.toString(), {
             headers:    { Token: COMPRAS_TOKEN },
             httpsAgent,
-            timeout:    300000,
+            timeout:    90000,   // falha rápido (90s) se a página pendurar, e re-tenta
             decompress: true,
           })
           result = Array.isArray(data) ? data : []
