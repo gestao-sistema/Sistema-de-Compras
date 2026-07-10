@@ -421,13 +421,20 @@ async function warmFinanceiro(emp = 'alinare', force = false) {
 
 // Atualiza TUDO da Alinare (produtos + assistências + financeiro) e só então
 // avança a "Última atualização" — o timestamp reflete o conjunto completo.
+// Espera limitada: resolve quando a promessa terminar OU quando estourar o tempo.
+// (O financeiro segue rodando em background se estourar — não bloqueia o ciclo.)
+const comLimite = (p, ms) => Promise.race([p, new Promise(r => setTimeout(r, ms))])
+const FIN_ESPERA_MAX = 3 * 60 * 1000   // no máx. 3 min esperando o financeiro por ciclo
+
 async function refreshTudo() {
   await refresh('alinare')                     // produtos
   await warmPedidosForn('alinare').catch(() => {})
   await warmAssistencias().catch(() => {})     // assistências
-  await warmFinanceiro('alinare', true)        // financeiro (força — puxa tudo a cada ciclo)
+  // Financeiro é forçado a cada ciclo, mas NÃO bloqueia: espera no máx. 3 min; se a
+  // API estiver lenta, o horário avança mesmo assim e o financeiro conclui em background.
+  await comLimite(warmFinanceiro('alinare', true), FIN_ESPERA_MAX)
   S('alinare').warmState.lastRefreshed = Date.now()
-  console.log(`[refresh] TUDO atualizado (produtos+assistências+financeiro) às ${new Date().toLocaleTimeString('pt-BR')}`)
+  console.log(`[refresh] ciclo Alinare concluído às ${new Date().toLocaleTimeString('pt-BR')}`)
 }
 
 // Loop contínuo: concluiu a atualização completa → espera 10 min → reatualiza.
@@ -445,8 +452,10 @@ async function refreshLoop() {
     // "Última atualização" dela ao concluir produtos + fornecedores + financeiro.
     refresh('novitah')
       .then(() => warmPedidosForn('novitah'))
-      .then(() => warmFinanceiro('novitah', true))
-      .then(() => { S('novitah').warmState.lastRefreshed = Date.now() })
+      .then(() => {
+        S('novitah').warmState.lastRefreshed = Date.now()   // horário após o núcleo confiável
+        warmFinanceiro('novitah', true).catch(() => {})      // financeiro em background (não segura)
+      })
       .catch(() => {})
     // Pausa de 10 min após concluir antes de iniciar a próxima atualização
     await new Promise(r => setTimeout(r, REFRESH_PAUSE))
