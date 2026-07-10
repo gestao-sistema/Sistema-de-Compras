@@ -441,10 +441,12 @@ async function refreshLoop() {
   fetchFinanceiro('novitah').catch(() => {})
   while (true) {
     await refreshTudo()                       // produtos + assistências + financeiro (Alinare)
-    // Novitah em background para não atrasar o ciclo da Alinare
+    // Novitah em background para não atrasar o ciclo da Alinare — também avança a
+    // "Última atualização" dela ao concluir produtos + fornecedores + financeiro.
     refresh('novitah')
       .then(() => warmPedidosForn('novitah'))
       .then(() => warmFinanceiro('novitah', true))
+      .then(() => { S('novitah').warmState.lastRefreshed = Date.now() })
       .catch(() => {})
     // Pausa de 10 min após concluir antes de iniciar a próxima atualização
     await new Promise(r => setTimeout(r, REFRESH_PAUSE))
