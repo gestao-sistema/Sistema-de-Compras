@@ -51,8 +51,8 @@ export default function Layout() {
   }
 
   const podeAmbas = profile?.empresa === 'ambas'
-  // Financeiro só aparece para os e-mails autorizados (Rafael)
-  let navVisivel = NAV.filter(n => podeVer(n.chave) && (n.to !== '/financeiro' || podeFinanceiro))
+  // Financeiro depende só de podeFinanceiro (permissão explícita/Rafael); as demais, de podeVer
+  let navVisivel = NAV.filter(n => n.to === '/financeiro' ? podeFinanceiro : podeVer(n.chave))
   if (empresa === 'novitah') navVisivel = navVisivel.filter(n => NAV_NOVITAH.includes(n.chave))
 
   // Pré-carrega pedidos e fornecedores em background para acesso instantâneo
@@ -143,12 +143,12 @@ export default function Layout() {
                   Última atualização
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ fontSize: 10, color: '#4ade80' }}>🕐</span>
-                  <span style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.05em', color: 'var(--accent)', fontFamily: 'monospace' }}>
+                  <span style={{ fontSize: 10, color: '#f5c518' }}>🕐</span>
+                  <span style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.05em', color: '#f5c518', fontFamily: 'monospace' }}>
                     {new Date(statusQ.data.lastRefreshed).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </div>
-                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-nav)', marginTop: 2 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: '#f5c518', marginTop: 2, fontFamily: 'monospace' }}>
                   {new Date(statusQ.data.lastRefreshed).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </div>
               </>

@@ -50,18 +50,21 @@ export function AuthProvider({ children }) {
 
     setProfile(prof)
 
-    if (prof.role === 'admin') {
-      setPermSet(new Set(PAGINAS.map(p => p.chave)))
-      return
-    }
-
+    // Sempre busca as permissões — 'financeiro' é explícita (nem admin ganha
+    // automático); só entra no conjunto se liberada individualmente (ou p/ o Rafael).
     const { data: perms } = await supabase
       .from('permissoes')
       .select('chave, liberado')
       .eq('user_id', userId)
+    const granted = new Set((perms || []).filter(p => p.liberado).map(p => p.chave))
 
-    const set = new Set((perms || []).filter(p => p.liberado).map(p => p.chave))
-    setPermSet(set)
+    if (prof.role === 'admin') {
+      const all = new Set(PAGINAS.map(p => p.chave))   // admin: acesso total às páginas normais
+      if (granted.has('financeiro')) all.add('financeiro')
+      setPermSet(all)
+    } else {
+      setPermSet(granted)
+    }
   }
 
   useEffect(() => {
@@ -98,7 +101,10 @@ export function AuthProvider({ children }) {
 
   const loading = session === undefined
 
-  const podeFinanceiro = !!session && FINANCEIRO_EMAILS.includes((session.user?.email || '').toLowerCase())
+  // Financeiro: sempre para o Rafael; para os demais, só se explicitamente liberado
+  const podeFinanceiro = !!session && (
+    FINANCEIRO_EMAILS.includes((session.user?.email || '').toLowerCase()) || permSet.has('financeiro')
+  )
 
   return (
     <AuthContext.Provider value={{ session, profile, permSet, podeVer, podeFinanceiro, login, logout, loading, reloadProfile: () => session && loadProfile(session.user.id) }}>

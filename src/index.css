@@ -218,6 +218,13 @@
   }
   @keyframes spin  { to { transform: rotate(360deg); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .blink-alerta { animation: pulse 1s ease-in-out infinite; }
+
+  /* Fundos das expansões do Financeiro — adaptam ao tema (escuro no dark, claro no diurno) */
+  .fin-exp-clientes { background: color-mix(in srgb, var(--accent-title) 7%, #06070c); }
+  .fin-exp-contas   { background: color-mix(in srgb, var(--accent-title) 12%, #0d0e16); }
+  [data-theme="light"] .fin-exp-clientes { background: color-mix(in srgb, var(--accent-title) 12%, #d7dcee); }
+  [data-theme="light"] .fin-exp-contas   { background: color-mix(in srgb, var(--accent-title) 16%, #e7ebf7); }
 
   .err-box {
     @apply px-4 py-3 rounded text-sm mb-4;

@@ -20,8 +20,8 @@ const COMPRAS_TOKEN = 'f7d36a19-b46b-4fc9-b064-db8e15be9110'
 // ─── Empresas (multiempresa) ─────────────────────────────────────────────────
 const FIN_BASE = 'https://api.financeiro.alinare.indepcloud.com.br:30662'
 const EMPRESAS = {
-  alinare: { base: COMPRAS_BASE, token: COMPRAS_TOKEN, diskFile: 'cache_compras.json', seedFile: 'cache_seed.json.gz', finBase: FIN_BASE, finToken: '2c9a971c-e798-4d92-b217-f1ee4b812a8c' },
-  novitah: { base: 'https://api.compras.novitah.indepcloud.com.br:29534', token: '41074c2b-be93-49b0-92f1-14449259092c', diskFile: 'cache_novitah.json', seedFile: 'cache_novitah_seed.json.gz', finBase: 'https://api.financeiro.novitah.indepcloud.com.br:29539', finToken: '50d267c1-aab1-4640-aa5f-8c808f62a2fb' },
+  alinare: { base: COMPRAS_BASE, token: COMPRAS_TOKEN, diskFile: 'cache_compras.json', seedFile: 'cache_seed.json.gz', finBase: FIN_BASE, finToken: '2c9a971c-e798-4d92-b217-f1ee4b812a8c', finDiskFile: 'fin_alinare.json.gz' },
+  novitah: { base: 'https://api.compras.novitah.indepcloud.com.br:29534', token: '41074c2b-be93-49b0-92f1-14449259092c', diskFile: 'cache_novitah.json', seedFile: 'cache_novitah_seed.json.gz', finBase: 'https://api.financeiro.novitah.indepcloud.com.br:29539', finToken: '50d267c1-aab1-4640-aa5f-8c808f62a2fb', finDiskFile: 'fin_novitah.json.gz' },
 }
 const EMPRESA_IDS = Object.keys(EMPRESAS)
 const empValida = e => (EMPRESAS[e] ? e : 'alinare')
@@ -385,8 +385,9 @@ async function refresh(emp = 'alinare') {
     st.warmState.skus          = items.length
     st.warmState.pais          = parents.length
     st.warmState.done          = true
-    st.warmState.lastRefreshed = Date.now()
-    console.log(`[refresh:${emp}] concluído: ${items.length} SKUs às ${new Date().toLocaleTimeString('pt-BR')}`)
+    // NÃO seta lastRefreshed aqui: a "Última atualização" só avança quando TUDO
+    // (produtos + assistências + financeiro) terminar — feito em refreshTudo().
+    console.log(`[refresh:${emp}] produtos concluídos: ${items.length} SKUs às ${new Date().toLocaleTimeString('pt-BR')}`)
   } catch (e) {
     st.warmState.error = e.message
     console.error(`[refresh:${emp}] erro:`, e.message)
@@ -409,28 +410,42 @@ async function initialLoad(emp = 'alinare') {
   }
 }
 
-// Loop contínuo: concluiu uma atualização → espera 10 min → reatualiza.
+// Atualiza o financeiro e aguarda concluir (force ignora o TTL e refaz o fetch)
+async function warmFinanceiro(emp = 'alinare', force = false) {
+  try {
+    fetchFinanceiro(emp, force)
+    const f = S(emp).finFetching
+    if (f) await f
+  } catch { /* erro já registrado em st.finError */ }
+}
+
+// Atualiza TUDO da Alinare (produtos + assistências + financeiro) e só então
+// avança a "Última atualização" — o timestamp reflete o conjunto completo.
+async function refreshTudo() {
+  await refresh('alinare')                     // produtos
+  await warmPedidosForn('alinare').catch(() => {})
+  await warmAssistencias().catch(() => {})     // assistências
+  await warmFinanceiro('alinare', true)        // financeiro (força — puxa tudo a cada ciclo)
+  S('alinare').warmState.lastRefreshed = Date.now()
+  console.log(`[refresh] TUDO atualizado (produtos+assistências+financeiro) às ${new Date().toLocaleTimeString('pt-BR')}`)
+}
+
+// Loop contínuo: concluiu a atualização completa → espera 10 min → reatualiza.
 async function refreshLoop() {
+  // Financeiro do disco → disponível instantaneamente (não espera o fetch lento/instável)
+  loadFinDisk('alinare'); loadFinDisk('novitah')
   await initialLoad('alinare')              // Alinare do seed → instantâneo
   warmPedidosForn('alinare').catch(() => {})
-  // Assistências da Alinare têm prioridade; só depois inicia o fetch pesado da Novitah
-  // para não competir por banda/CPU no boot.
-  warmAssistencias()
-    .catch(() => {})
-    .finally(() => {
-      initialLoad('novitah').then(() => warmPedidosForn('novitah')).catch(() => {})
-      // Financeiro é pesado (Allinare ~24 páginas); aquece por último, sem bloquear
-      // nada, e a Novitah só depois da Allinare para não competirem.
-      fetchFinanceiro('alinare').catch(() => {}).finally(() => fetchFinanceiro('novitah').catch(() => {}))
-    })
+  // Novitah em background para não competir por banda/CPU no boot
+  initialLoad('novitah').then(() => warmPedidosForn('novitah')).catch(() => {})
+  fetchFinanceiro('novitah').catch(() => {})
   while (true) {
-    await refresh('alinare')
-    warmPedidosForn('alinare').catch(() => {})
-    warmAssistencias().catch(() => {})
-    // Financeiro NÃO é reaquecido a cada ciclo (uso restrito ao Rafael) — fica
-    // on-demand com serve-stale; só aquece uma vez no boot acima.
+    await refreshTudo()                       // produtos + assistências + financeiro (Alinare)
     // Novitah em background para não atrasar o ciclo da Alinare
-    refresh('novitah').then(() => warmPedidosForn('novitah')).catch(() => {})
+    refresh('novitah')
+      .then(() => warmPedidosForn('novitah'))
+      .then(() => warmFinanceiro('novitah', true))
+      .catch(() => {})
     // Pausa de 10 min após concluir antes de iniciar a próxima atualização
     await new Promise(r => setTimeout(r, REFRESH_PAUSE))
   }
@@ -1434,9 +1449,42 @@ app.get('/api/assistencias/geral', async (req, res) => {
 })
 
 // ─── Financeiro (contas a receber) ──────────────────────────────────────────────
-const FIN_TTL       = 30 * 60 * 1000
+// O financeiro é atualizado no mesmo ciclo dos produtos (refreshTudo, com force):
+// puxa tudo → pausa de 10 min → puxa de novo, idêntico ao compras. O TTL só evita que
+// um hit no endpoint entre ciclos dispare fetch redundante (serve do cache/disco).
+const FIN_TTL       = 15 * 60 * 1000        // 15 min
 const FIN_PAGE_SIZE = 5000     // teto por resposta do endpoint
 const FIN_MAX_PAGES = 60       // trava de segurança
+
+// Persistência do financeiro em disco (gzip) — sobrevive a restart/deploy no volume.
+function saveFinDisk(emp) {
+  if (!DISK_PERSIST) return
+  const st = S(emp), cfg = EMPRESAS[empValida(emp)]
+  if (!st.finCache || !cfg.finDiskFile) return
+  try {
+    fs.mkdirSync(CACHE_DIR, { recursive: true })
+    const file = path.join(CACHE_DIR, cfg.finDiskFile)
+    const payload = JSON.stringify({ ts: st.finCacheAt, total: st.finTotal || 0, data: st.finCache })
+    fs.writeFileSync(file, require('zlib').gzipSync(Buffer.from(payload)))
+    console.log(`[fin:${emp}] salvo em disco: ${st.finTotal} contas → ${file}`)
+  } catch (e) { console.error(`[fin:${emp}] erro ao salvar disco:`, e.message) }
+}
+
+function loadFinDisk(emp) {
+  try {
+    const cfg = EMPRESAS[empValida(emp)]
+    if (!cfg.finDiskFile) return
+    const file = path.join(CACHE_DIR, cfg.finDiskFile)
+    if (!fs.existsSync(file)) return
+    const obj = JSON.parse(require('zlib').gunzipSync(fs.readFileSync(file)).toString('utf8'))
+    const st = S(emp)
+    st.finCache   = obj.data
+    st.finTotal   = obj.total || 0
+    st.finCacheAt = obj.ts || 0
+    const age = Date.now() - (obj.ts || 0)
+    console.log(`[fin:${emp}] cache carregado do disco: ${st.finTotal} contas (${Math.round(age / 3600000)}h atrás)`)
+  } catch (e) { console.error(`[fin:${emp}] erro ao ler disco:`, e.message) }
+}
 
 // Enxuga cada conta para só os campos usados no build — evita reter ~190MB de JSON cru
 function slimVendedores(V) {
@@ -1446,43 +1494,74 @@ function slimVendedores(V) {
       Numero: c.Numero, Prefixo: c.Prefixo, Emissao: c.Emissao, Historico: c.Historico,
       Nome: c.Nome, Cliente: c.Cliente,
       Parcelas: (c.Parcelas || []).map(p => ({
-        ValorPago: p.ValorPago, SaldoAberto: p.SaldoAberto,
+        ValorPago: p.ValorPago, SaldoAberto: p.SaldoAberto, ValorTotal: p.ValorTotal,
         Vencimento: p.Vencimento, VencimentoReal: p.VencimentoReal,
       })),
       Pagamentos: (c.Pagamentos || []).map(p => ({
         Tipo: p.Tipo, FormaPagamento: p.FormaPagamento,
         Numerario: p.Numerario, ValorPagoReais: p.ValorPagoReais,
+        DataPagamento: p.DataPagamento,
       })),
     })),
   }))
 }
 
-const FIN_BATCH = 6   // páginas baixadas em paralelo por lote
+const FIN_BATCH = 6    // páginas baixadas em paralelo por lote
+const FIN_RETRY = 4    // tentativas por página para erros TRANSITÓRIOS (timeout/rede/502)
 
-async function fetchFinPage(cfg, page) {
-  const r = await axios.get(
-    `${cfg.finBase}/financeiro/conta/receber?limit=${FIN_PAGE_SIZE}&page=${page}`,
-    { headers: { Token: cfg.finToken }, httpsAgent, timeout: 180000, decompress: true }
-  )
-  return r.data
+// Detecta o FIM real da paginação: a página fora do range faz a API gerar um SQL
+// inválido e devolver 500 com {"mensagem":"ERROR [42601] ... erro de sintaxe ..."}.
+// Só esse erro específico é "fim"; timeout / HTTP 000 / 502 = instabilidade (outage).
+function isEndOfRange(e) {
+  if (e.response?.status !== 500) return false
+  const body = e.response?.data
+  const msg = typeof body === 'string' ? body : (body?.mensagem || JSON.stringify(body || ''))
+  return /42601|erro de sintaxe|syntax error/i.test(msg)
+}
+
+// Busca uma página. 4xx (403 token) propaga na hora. Fim de range → lança err.finEnd.
+// Transitórios (timeout/rede/502) → re-tenta; se persistir, lança err.outage.
+async function fetchFinPage(cfg, page, emp) {
+  let lastErr
+  for (let attempt = 1; attempt <= FIN_RETRY; attempt++) {
+    try {
+      const r = await axios.get(
+        `${cfg.finBase}/financeiro/conta/receber?limit=${FIN_PAGE_SIZE}&page=${page}`,
+        { headers: { Token: cfg.finToken }, httpsAgent, timeout: 120000, decompress: true }
+      )
+      return r.data
+    } catch (e) {
+      const st = e.response?.status
+      if (st && st >= 400 && st < 500) throw e                    // 4xx (403) → propaga
+      if (isEndOfRange(e)) { const end = new Error('fim do range'); end.finEnd = true; throw end }
+      lastErr = e
+      if (attempt < FIN_RETRY) {
+        const delay = Math.min(1500 * attempt, 8000)
+        console.warn(`[fin:${emp}] página ${page} tentativa ${attempt}/${FIN_RETRY}: ${e.message} (aguardando ${delay}ms)`)
+        await new Promise(r => setTimeout(r, delay))
+      }
+    }
+  }
+  const out = new Error(`página ${page} indisponível após ${FIN_RETRY} tentativas: ${lastErr?.message}`)
+  out.outage = true
+  throw out
 }
 
 // O endpoint é PAGINADO (?page=): a página 1 traz só "Sem Vendedor"; os vendedores
-// reais estão nas páginas seguintes. Percorro TODAS (em lotes paralelos) e junto os
-// Vendedores. Fim da paginação = página com 5xx (fora do range) ou 0 contas.
-// (Páginas parciais no meio — ex.: pág 2 = 4504 — NÃO indicam fim.)
-async function fetchFinanceiroAllPages(cfg) {
+// reais estão nas seguintes. Percorro TODAS (em lotes paralelos) e junto os Vendedores.
+// Fim = página vazia (0 contas) ou erro de fim-de-range (SQL 42601). Outage (timeout
+// persistente) LANÇA err.outage — não trunca; o chamador re-tenta depois sem gravar lixo.
+async function fetchFinanceiroAllPages(cfg, emp) {
   let vendedores = [], pagGeral = null, total = 0, done = false
 
-  // 1ª página isolada: se falhar (ex.: 403 token) o erro deve propagar
-  const first = await fetchFinPage(cfg, 1)
+  const first = await fetchFinPage(cfg, 1, emp)     // 403/outage na 1ª propaga
   if (Array.isArray(first?.PagamentoGeral)) pagGeral = first.PagamentoGeral
   {
     const V = Array.isArray(first?.Vendedores) ? first.Vendedores : []
     let c = 0; for (const v of V) c += (v.ContasAReceber || []).length
-    if (c === 0) return { PagamentoGeral: pagGeral || [], Vendedores: [] }
+    if (c === 0) return { PagamentoGeral: pagGeral || [], Vendedores: [], total: 0 }
     vendedores = vendedores.concat(slimVendedores(V)); total += c
-    console.log(`[fin] página 1: ${c} contas (acum ${total})`)
+    console.log(`[fin:${emp}] página 1: ${c} contas (acum ${total})`)
   }
 
   let next = 2
@@ -1490,45 +1569,63 @@ async function fetchFinanceiroAllPages(cfg) {
     const pages = []
     for (let p = next; p < next + FIN_BATCH && p <= FIN_MAX_PAGES; p++) pages.push(p)
     const results = await Promise.all(pages.map(p =>
-      fetchFinPage(cfg, p).then(d => ({ p, d })).catch(e => ({ p, err: e }))
+      fetchFinPage(cfg, p, emp).then(d => ({ p, d })).catch(e => ({ p, err: e }))
     ))
+    results.sort((a, b) => a.p - b.p)
     for (const { p, d, err } of results) {
+      if (done) break
       if (err) {
-        const st = err.response?.status
-        if (st && st >= 400) { done = true }           // fora do range → fim
-        else console.warn(`[fin] página ${p} falhou (rede): ${err.message}`)
-        continue
+        if (err.finEnd) { console.log(`[fin:${emp}] fim do range na página ${p} (total ${total})`); done = true; break }
+        throw err                                   // outage → aborta o fetch inteiro (não trunca)
       }
       const V = Array.isArray(d?.Vendedores) ? d.Vendedores : []
       let c = 0; for (const v of V) c += (v.ContasAReceber || []).length
-      if (c === 0) { done = true; continue }
+      if (c === 0) { done = true; break }
       vendedores = vendedores.concat(slimVendedores(V)); total += c
-      console.log(`[fin] página ${p}: ${c} contas (acum ${total})`)
+      console.log(`[fin:${emp}] página ${p}: ${c} contas (acum ${total})`)
     }
     next += FIN_BATCH
   }
-  return { PagamentoGeral: pagGeral || [], Vendedores: vendedores }
+  return { PagamentoGeral: pagGeral || [], Vendedores: vendedores, total }
 }
 
-async function fetchFinanceiro(emp = 'alinare') {
+async function fetchFinanceiro(emp = 'alinare', force = false) {
   const st = S(emp), cfg = EMPRESAS[empValida(emp)]
   const fresh = st.finCache && Date.now() - st.finCacheAt < FIN_TTL
-  if (fresh) return st.finCache
-  // dispara atualização (deduplicada) em segundo plano
-  if (!st.finFetching) {
+  if (fresh && !force) return st.finCache
+  // dispara atualização (deduplicada) em segundo plano — NÃO bloqueia a resposta.
+  // Cooldown após falha (outage) para não martelar a API a cada poll do front.
+  if (!st.finFetching && Date.now() >= (st.finRetryAfter || 0)) {
     st.finFetching = (async () => {
       try {
-        const data = await fetchFinanceiroAllPages(cfg)
-        st.finCache = data
-        st.finCacheAt = Date.now()
-        return data
+        st.finError = null
+        const data = await fetchFinanceiroAllPages(cfg, emp)
+        const nova = data.total || 0, antiga = st.finTotal || 0
+        // Guarda: não substitui um cache bom por um resultado menor.
+        if (!st.finCache || nova >= antiga * 0.9) {
+          st.finCache = data
+          st.finCacheAt = Date.now()
+          st.finTotal = nova
+          console.log(`[fin:${emp}] cache atualizado: ${nova} contas`)
+          saveFinDisk(emp)                 // persiste no volume — sobrevive a restart/deploy
+        } else {
+          st.finCacheAt = Date.now()
+          console.warn(`[fin:${emp}] resultado ${nova} < ${antiga} — mantendo cache anterior`)
+        }
+        return st.finCache
+      } catch (e) {
+        st.finError = e                    // 403 (token) ou outage (instabilidade)
+        // Outage: espera 20s antes de nova tentativa; 403: espera 5 min (token errado)
+        st.finRetryAfter = Date.now() + (e.response?.status === 403 ? 300000 : 20000)
+        console.warn(`[fin:${emp}] atualização falhou: ${e.message}`)
+        throw e
       } finally { st.finFetching = null }
     })()
-    st.finFetching.catch(() => {})       // evita unhandledRejection quando servimos stale
+    st.finFetching.catch(() => {})       // evita unhandledRejection
   }
-  // serve cache velho enquanto atualiza; só bloqueia se não houver nada em cache
-  if (st.finCache) return st.finCache
-  return st.finFetching
+  // Nunca bloqueia: devolve o cache atual (pode ser null durante a 1ª carga).
+  // O endpoint traduz null em { carregando: true }.
+  return st.finCache
 }
 
 const brToInt = s => { const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? +(m[3] + m[2] + m[1]) : null }
@@ -1541,6 +1638,8 @@ function buildFinanceiro(fin, filtros = {}) {
   const vencidas = filtros.vencidas === 'true' || filtros.vencidas === true
   const deInt    = filtros.de  ? +String(filtros.de).replace(/-/g, '')  : null   // aaaa-mm-dd
   const ateInt   = filtros.ate ? +String(filtros.ate).replace(/-/g, '') : null
+  const pagDeInt  = filtros.pagDe  ? +String(filtros.pagDe).replace(/-/g, '')  : null
+  const pagAteInt = filtros.pagAte ? +String(filtros.pagAte).replace(/-/g, '') : null
   const cliQ     = (filtros.cliente || '').trim().toLowerCase()
   const modQ     = (filtros.modalidade || '').trim().toLowerCase()
   const hoje     = new Date(); const hojeInt = hoje.getFullYear() * 10000 + (hoje.getMonth() + 1) * 100 + hoje.getDate()
@@ -1550,18 +1649,22 @@ function buildFinanceiro(fin, filtros = {}) {
   for (const v of vendedoresRaw) {
     const vk = v.Vendedor || v.NVendedor || '—'
     for (const c of (v.ContasAReceber || [])) {
-      let cPago = 0, cPend = 0, venc = ''
+      let cPago = 0, cPend = 0, cDevido = 0, venc = ''
       for (const p of (c.Parcelas || [])) {
         cPago += Number(p.ValorPago) || 0
+        cDevido += Number(p.ValorTotal) || 0            // valor devido (valor a pagar)
         const saldo = Number(p.SaldoAberto) || 0
         if (saldo > 0) { cPend += saldo; if (!venc) venc = p.VencimentoReal || p.Vencimento || '' }
       }
       const aberto = cPend > 0
       const formas = {}
+      let pgData = '', pgDataInt = 0                     // última data de pagamento
       for (const pg of (c.Pagamentos || [])) {
         if ((pg.Tipo || '') !== 'Entrada') continue
         const forma = (pg.FormaPagamento || pg.Numerario || '—').trim()
         formas[forma] = (formas[forma] || 0) + (Number(pg.ValorPagoReais) || 0)
+        const di = brToInt(pg.DataPagamento)
+        if (di && di >= pgDataInt) { pgDataInt = di; pgData = pg.DataPagamento }
       }
 
       // ── filtros ──
@@ -1570,6 +1673,9 @@ function buildFinanceiro(fin, filtros = {}) {
       const emiInt = brToInt(c.Emissao)
       if (deInt  && (!emiInt || emiInt < deInt))  continue
       if (ateInt && (!emiInt || emiInt > ateInt)) continue
+      // filtro por data de pagamento (contas sem pagamento saem quando o filtro está ativo)
+      if (pagDeInt  && (!pgDataInt || pgDataInt < pagDeInt))  continue
+      if (pagAteInt && (!pgDataInt || pgDataInt > pagAteInt)) continue
       if (vencidas) { const vInt = brToInt(venc); if (!(aberto && vInt && vInt < hojeInt)) continue }
       if (cliQ && !((c.Nome || '').toLowerCase().includes(cliQ) || (c.Cliente || '').toLowerCase().includes(cliQ))) continue
       if (modQ && !Object.keys(formas).some(f => f.toLowerCase() === modQ)) continue
@@ -1579,13 +1685,14 @@ function buildFinanceiro(fin, filtros = {}) {
       if (!mapaV[vk]) mapaV[vk] = { nome: v.NVendedor || v.Vendedor || '—', codigo: v.Vendedor || '', cli: {}, mod: {} }
       const cliMap = mapaV[vk].cli
       const key = c.Cliente || c.Nome || '—'
-      if (!cliMap[key]) cliMap[key] = { nome: c.Nome || key, codigo: c.Cliente || '', pago: 0, pend: 0, mod: {}, contas: [] }
+      if (!cliMap[key]) cliMap[key] = { nome: c.Nome || key, codigo: c.Cliente || '', devido: 0, pago: 0, pend: 0, mod: {}, contas: [] }
       cliMap[key].pago += pagoEf
       cliMap[key].pend += cPend
+      cliMap[key].devido += cDevido
       cliMap[key].contas.push({
         numero: c.Numero || '', prefixo: c.Prefixo || '', emissao: c.Emissao || '',
-        historico: c.Historico || '', vencimento: venc,
-        pago: pagoEf, pend: cPend, total: pagoEf + cPend, aberto,
+        historico: c.Historico || '', vencimento: venc, pagamento: vencidas ? '' : pgData,
+        devido: cDevido, pago: pagoEf, pend: cPend, total: pagoEf + cPend, aberto,
       })
       if (!vencidas) for (const [forma, val] of Object.entries(formas)) {
         cliMap[key].mod[forma]  = (cliMap[key].mod[forma]  || 0) + val
@@ -1594,22 +1701,22 @@ function buildFinanceiro(fin, filtros = {}) {
     }
   }
 
-  let totPago = 0, totPend = 0
+  let totPago = 0, totPend = 0, totDevido = 0
   const vendedores = Object.values(mapaV).map(v => {
-    let vp = 0, vpe = 0
+    let vp = 0, vpe = 0, vd = 0
     const clientes = Object.values(v.cli).map(c => {
       const total = c.pago + c.pend
       const modalidades = Object.entries(c.mod).filter(([, x]) => x > 0)
         .map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
       const { mod, ...rest } = c
-      vp += c.pago; vpe += c.pend
+      vp += c.pago; vpe += c.pend; vd += c.devido
       return { ...rest, total, pctPend: total > 0 ? (c.pend / total) * 100 : 0, modalidades }
     }).sort((a, b) => b.total - a.total)
     const vtotal = vp + vpe
-    totPago += vp; totPend += vpe
+    totPago += vp; totPend += vpe; totDevido += vd
     const modalidades = Object.entries(v.mod).filter(([, x]) => x > 0)
       .map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
-    return { nome: v.nome, codigo: v.codigo, pago: vp, pend: vpe, total: vtotal, pctPend: vtotal > 0 ? (vpe / vtotal) * 100 : 0, clientesCount: clientes.length, modalidades, clientes }
+    return { nome: v.nome, codigo: v.codigo, devido: vd, pago: vp, pend: vpe, total: vtotal, pctPend: vtotal > 0 ? (vpe / vtotal) * 100 : 0, clientesCount: clientes.length, modalidades, clientes }
   }).sort((a, b) => b.total - a.total)
   const totGeral = totPago + totPend
 
@@ -1633,11 +1740,18 @@ app.get('/api/financeiro', async (req, res) => {
   try {
     const emp = empValida(req.query.empresa)
     const fin = await fetchFinanceiro(emp)
-    const { de, ate, situacao, vencidas, cliente, modalidade } = req.query
-    res.json(buildFinanceiro(fin, { de, ate, situacao, vencidas, cliente, modalidade }))
+    if (!fin) {
+      const st = S(emp), err = st.finError
+      if (err && err.response?.status === 403) {
+        return res.json({ erro: 'Acesso negado ao financeiro desta empresa (token).', cards: {}, vendedores: [], modalidade: [] })
+      }
+      // 1ª carga ou instabilidade da API (outage) — frontend fica "carregando" e repolla
+      return res.json({ carregando: true, cards: {}, vendedores: [], modalidade: [] })
+    }
+    const { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade } = req.query
+    res.json(buildFinanceiro(fin, { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade }))
   } catch (e) {
-    const status = e.response?.status
-    res.status(200).json({ erro: status === 403 ? 'Acesso negado ao financeiro desta empresa (token).' : e.message, cards: {}, vendedores: [], modalidade: [] })
+    res.status(200).json({ erro: e.message, cards: {}, vendedores: [], modalidade: [] })
   }
 })
 
@@ -1709,9 +1823,26 @@ app.get('/api/admin/usuarios', async (req, res) => {
       supabaseAdmin('GET', '/rest/v1/profiles?select=*&order=nome.asc'),
       supabaseAdmin('GET', '/rest/v1/permissoes?select=*'),
     ])
-    console.log('[admin/usuarios] profiles:', JSON.stringify(profs).slice(0, 200))
-    console.log('[admin/usuarios] permissoes:', JSON.stringify(perms).slice(0, 200))
-    res.json({ profiles: Array.isArray(profs) ? profs : [], permissoes: Array.isArray(perms) ? perms : [] })
+    const profList = Array.isArray(profs) ? profs : []
+
+    // Mescla com os usuários de autenticação — garante que TODOS apareçam,
+    // mesmo quem ainda não tem linha em profiles (ex.: nunca fez login).
+    try {
+      const auth = await supabaseAdmin('GET', '/auth/v1/admin/users?per_page=1000')
+      const authUsers = auth?.users || (Array.isArray(auth) ? auth : [])
+      const byId = new Map(profList.map(p => [p.id, p]))
+      for (const u of authUsers) {
+        const p = byId.get(u.id)
+        if (!p) {
+          profList.push({ id: u.id, nome: u.email || 'Usuário', email: u.email, empresa: 'ambas', role: 'usuario', ativo: true, semProfile: true })
+        } else if (!p.email) {
+          p.email = u.email
+        }
+      }
+      profList.sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')))
+    } catch (e) { console.warn('[admin/usuarios] auth merge falhou:', e.message) }
+
+    res.json({ profiles: profList, permissoes: Array.isArray(perms) ? perms : [] })
   } catch (e) { console.error('[admin/usuarios] erro:', e.message); res.status(500).json({ error: e.message }) }
 })
 

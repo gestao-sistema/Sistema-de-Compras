@@ -229,8 +229,30 @@ export default function AdminPage() {
             {/* Permissões */}
             {aberto && (
               <div style={{ padding:'18px 20px' }}>
+                {/* Financeiro — acesso especial: nem admin ganha automático, é liberado individualmente */}
+                {(() => {
+                  const libFin = !!permsUser['financeiro']
+                  return (
+                    <div onClick={() => togglePermissao(u.id, 'financeiro', libFin)}
+                      style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', marginBottom:16,
+                        borderRadius:8, cursor:'pointer',
+                        background: libFin ? 'rgba(245,197,24,0.10)' : 'rgba(245,197,24,0.03)',
+                        border:`1px solid ${libFin ? 'rgba(245,197,24,0.5)' : 'rgba(245,197,24,0.2)'}` }}>
+                      <div style={{ width:16, height:16, borderRadius:4, flexShrink:0,
+                        background: libFin ? '#f5c518' : 'transparent',
+                        border:`2px solid ${libFin ? '#f5c518' : '#8a6d1a'}`,
+                        display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        {libFin && <span style={{ color:'#0d0e16', fontSize:10, fontWeight:900 }}>✓</span>}
+                      </div>
+                      <div>
+                        <div style={{ fontSize:12, fontWeight:700, color: libFin ? '#f5c518' : '#a98a2e' }}>💰 Financeiro (acesso especial)</div>
+                        <div style={{ fontSize:10.5, color:'#6b7280', marginTop:1 }}>Liberado individualmente — nem admin tem por padrão.</div>
+                      </div>
+                    </div>
+                  )
+                })()}
                 {isAdmin ? (
-                  <p style={{ fontSize:12, color:'#D4AF37' }}>Admin tem acesso total a todas as páginas automaticamente.</p>
+                  <p style={{ fontSize:12, color:'#D4AF37' }}>Admin tem acesso total às demais páginas automaticamente.</p>
                 ) : (
                   <>
                     <div style={{ display:'flex', gap:8, marginBottom:14, alignItems:'center' }}>

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect } from 'react'
 import { setApiEmpresa } from '../api/client'
 
 export const EMPRESAS = {
-  alinare: { label: 'Allinare', accent: '#1a3878', accentText: '#ffffff', accentNav: '#6f9be6', accentTitle: '#6f9be6', logo: '/alinare.png' },
+  alinare: { label: 'Allinare', accent: '#1a3878', accentText: '#ffffff', accentNav: '#6f9be6', accentTitle: '#9dc0f5', logo: '/alinare.png' },
   novitah: { label: 'Novitah', accent: '#d2703f', accentText: '#ffffff', accentNav: '#e0925f', accentTitle: '#d2703f', logo: '/novitha.png' },
 }
 

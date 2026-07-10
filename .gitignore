@@ -4,6 +4,8 @@ dist/
 .claude/
 backend/cache_compras.json
 backend/cache_novitah.json
+backend/fin_alinare.json.gz
+backend/fin_novitah.json.gz
 debug-profiles.mjs
 setup-usuarios.mjs
 shots.js
