@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -80,6 +80,13 @@ export default function Layout() {
     prevRefreshed.current = lr
   }, [statusQ.data?.lastRefreshed, qc])
 
+  // "Última atualização" contextual: na tela Financeiro mostra o horário do financeiro;
+  // nas demais, o horário do refresh de produtos (dashboard/curva/sugestão/etc.).
+  const location = useLocation()
+  const naFinanceiro = location.pathname.startsWith('/financeiro')
+  const atualizadoEm = naFinanceiro ? statusQ.data?.finCacheAt : statusQ.data?.lastRefreshed
+  const contextoLabel = naFinanceiro ? 'Financeiro' : 'Estoque'
+
   const isRefreshing = statusQ.data?.done === false
 
   return (
@@ -133,25 +140,27 @@ export default function Layout() {
         <div className="mt-auto px-4 pb-6">
           {/* Indicador de sincronização */}
           <div style={{ marginBottom: 10, padding: '8px 10px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: statusQ.data?.lastRefreshed ? 8 : 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: atualizadoEm ? 8 : 0 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Sincronização ativa</span>
             </div>
-            {statusQ.data?.lastRefreshed && (
+            {atualizadoEm ? (
               <>
                 <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-nav)', marginBottom: 4 }}>
-                  Última atualização
+                  Última atualização · <span style={{ color: 'var(--accent-title, var(--accent))' }}>{contextoLabel}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <span style={{ fontSize: 10, color: '#f5c518' }}>🕐</span>
                   <span style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.05em', color: '#f5c518', fontFamily: 'monospace' }}>
-                    {new Date(statusQ.data.lastRefreshed).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    {new Date(atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 </div>
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#f5c518', marginTop: 2, fontFamily: 'monospace' }}>
-                  {new Date(statusQ.data.lastRefreshed).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {new Date(atualizadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </div>
               </>
+            ) : naFinanceiro && (
+              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>Financeiro carregando…</div>
             )}
           </div>
           <button

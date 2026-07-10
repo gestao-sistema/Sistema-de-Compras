@@ -917,9 +917,11 @@ app.post('/api/admin/force-refresh', async (req, res) => {
 })
 
 app.get('/api/status', (req, res) => {
-  const warmState = S(req.query.empresa).warmState
+  const st = S(req.query.empresa)
+  const warmState = st.warmState
   const elapsed = Math.round((Date.now() - warmState.startedAt) / 1000)
-  res.json({ ...warmState, elapsed })
+  // finCacheAt: horário da última atualização do financeiro (mostrado quando na tela Financeiro)
+  res.json({ ...warmState, elapsed, finCacheAt: st.finCacheAt || null })
 })
 
 app.get('/api/compras', async (req, res) => {
