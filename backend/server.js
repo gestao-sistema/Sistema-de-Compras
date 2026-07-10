@@ -350,9 +350,10 @@ async function getProdutos(emp = 'alinare') {
 
 // ─── Pré-aquece e agenda refresh automático a cada 30 min ───────────────────
 
+// Retorna true só quando os produtos foram efetivamente atualizados com sucesso.
 async function refresh(emp = 'alinare') {
   const st = S(emp)
-  if (st.refreshing) return
+  if (st.refreshing) return false
   st.refreshing = true
   st.warmState.error = null
 
@@ -366,7 +367,7 @@ async function refresh(emp = 'alinare') {
     const prevCount = prevCache ? prevCache.length : 0
     if (prevCount > 0 && parents.length < prevCount * 0.80) {
       console.warn(`[refresh:${emp}] DESCARTADO — novo fetch retornou ${parents.length} produtos mas o cache tem ${prevCount} (< 80%). Mantendo dados anteriores.`)
-      return
+      return false
     }
 
     // Processa e classifica ABC
@@ -388,9 +389,11 @@ async function refresh(emp = 'alinare') {
     // NÃO seta lastRefreshed aqui: a "Última atualização" só avança quando TUDO
     // (produtos + assistências + financeiro) terminar — feito em refreshTudo().
     console.log(`[refresh:${emp}] produtos concluídos: ${items.length} SKUs às ${new Date().toLocaleTimeString('pt-BR')}`)
+    return true
   } catch (e) {
     st.warmState.error = e.message
     console.error(`[refresh:${emp}] erro:`, e.message)
+    return false
   } finally {
     st.refreshing = false
   }
@@ -427,14 +430,20 @@ const comLimite = (p, ms) => Promise.race([p, new Promise(r => setTimeout(r, ms)
 const FIN_ESPERA_MAX = 3 * 60 * 1000   // no máx. 3 min esperando o financeiro por ciclo
 
 async function refreshTudo() {
-  await refresh('alinare')                     // produtos
+  const ok = await refresh('alinare')          // produtos (true só se atualizou de fato)
   await warmPedidosForn('alinare').catch(() => {})
   await warmAssistencias().catch(() => {})     // assistências
   // Financeiro é forçado a cada ciclo, mas NÃO bloqueia: espera no máx. 3 min; se a
   // API estiver lenta, o horário avança mesmo assim e o financeiro conclui em background.
   await comLimite(warmFinanceiro('alinare', true), FIN_ESPERA_MAX)
-  S('alinare').warmState.lastRefreshed = Date.now()
-  console.log(`[refresh] ciclo Alinare concluído às ${new Date().toLocaleTimeString('pt-BR')}`)
+  // Só avança a "Última atualização" se os produtos atualizaram com sucesso — em erro,
+  // mantém o último horário bom (nunca volta ao inicial nem mostra horário falso).
+  if (ok) {
+    S('alinare').warmState.lastRefreshed = Date.now()
+    console.log(`[refresh] ciclo Alinare concluído às ${new Date().toLocaleTimeString('pt-BR')}`)
+  } else {
+    console.warn('[refresh] ciclo Alinare sem atualização de produtos — mantendo horário anterior')
+  }
 }
 
 // Loop contínuo: concluiu a atualização completa → espera 10 min → reatualiza.
@@ -451,10 +460,10 @@ async function refreshLoop() {
     // Novitah em background para não atrasar o ciclo da Alinare — também avança a
     // "Última atualização" dela ao concluir produtos + fornecedores + financeiro.
     refresh('novitah')
-      .then(() => warmPedidosForn('novitah'))
-      .then(() => {
-        S('novitah').warmState.lastRefreshed = Date.now()   // horário após o núcleo confiável
-        warmFinanceiro('novitah', true).catch(() => {})      // financeiro em background (não segura)
+      .then(async ok => {
+        await warmPedidosForn('novitah').catch(() => {})
+        if (ok) S('novitah').warmState.lastRefreshed = Date.now()   // só avança se produtos ok
+        warmFinanceiro('novitah', true).catch(() => {})              // financeiro em background
       })
       .catch(() => {})
     // Pausa de 10 min após concluir antes de iniciar a próxima atualização
