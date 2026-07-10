@@ -1,6 +1,11 @@
+// Empresa selecionada (multiempresa) — injetada em toda chamada /api
+let _empresa = (typeof localStorage !== 'undefined' && localStorage.getItem('empresa')) || 'alinare'
+export function setApiEmpresa(e) { _empresa = e || 'alinare' }
+
 async function get(path, params = {}) {
   const url = new URL('/api' + path, window.location.origin)
-  Object.entries(params).forEach(([k, v]) => {
+  const merged = { empresa: _empresa, ...params }
+  Object.entries(merged).forEach(([k, v]) => {
     if (v != null && v !== '') url.searchParams.set(k, String(v))
   })
   const res = await fetch(url.toString())
@@ -27,6 +32,7 @@ export const api = {
   assistencias:     (cpfcnpj, limit) => get('/blip/assistencia', { cpfcnpj, limit }),
   assistenciaItens: (id, cpfcnpj)   => get(`/blip/assistencia/itens/${id}`, { cpfcnpj }),
   assistenciasGeral:(status)         => get('/assistencias/geral', { status }),
+  financeiro:       (params)         => get('/financeiro', params),
   alertas:          ()               => get('/alertas'),
 }
 

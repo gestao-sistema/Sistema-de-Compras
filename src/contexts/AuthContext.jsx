@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
+// Financeiro fica restrito a estes e-mails (não aparece no menu nem na rota p/ os demais)
+const FINANCEIRO_EMAILS = ['rafael.silva@azime.com.br']
+
 export const PAGINAS = [
   { chave: 'dashboard',    label: 'Dashboard' },
   { chave: 'curva_abc',    label: 'Curva ABC' },
@@ -95,8 +98,10 @@ export function AuthProvider({ children }) {
 
   const loading = session === undefined
 
+  const podeFinanceiro = !!session && FINANCEIRO_EMAILS.includes((session.user?.email || '').toLowerCase())
+
   return (
-    <AuthContext.Provider value={{ session, profile, permSet, podeVer, login, logout, loading, reloadProfile: () => session && loadProfile(session.user.id) }}>
+    <AuthContext.Provider value={{ session, profile, permSet, podeVer, podeFinanceiro, login, logout, loading, reloadProfile: () => session && loadProfile(session.user.id) }}>
       {children}
     </AuthContext.Provider>
   )

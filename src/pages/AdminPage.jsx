@@ -14,7 +14,7 @@ const PAGINAS = [
 
 const EMPRESAS = [
   { value: 'ambas',   label: 'Ambas' },
-  { value: 'alinare', label: 'Alinare' },
+  { value: 'alinare', label: 'Allinare' },
   { value: 'novitah', label: 'Novitah' },
 ]
 

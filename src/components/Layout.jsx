@@ -3,8 +3,12 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { useCompany, EMPRESAS } from '../contexts/CompanyContext'
 import TourModal, { TOUR_KEY } from './TourModal'
 import FloatingActions from './FloatingActions'
+
+// Módulos disponíveis por empresa (Novitah: compras + fornecedores + pedidos + financeiro)
+const NAV_NOVITAH = ['dashboard', 'curva_abc', 'compras', 'pedidos', 'fornecedores', 'clientes']
 
 const NAV = [
   { to: '/',            label: 'Dashboard',    end: true,  Icon: IconGrid,      chave: 'dashboard' },
@@ -12,7 +16,7 @@ const NAV = [
   { to: '/compras',     label: 'Sugestão de Compra',       Icon: IconCart,      chave: 'compras' },
   { to: '/pedidos',     label: 'Pedidos de Compras',       Icon: IconClipboard, chave: 'pedidos' },
   { to: '/fornecedores',label: 'Fornecedores',             Icon: IconTruck,     chave: 'fornecedores' },
-  { to: '/clientes',    label: 'Clientes',                 Icon: IconUser,      chave: 'clientes' },
+  { to: '/financeiro',  label: 'Financeiro',               Icon: IconMoney,     chave: 'clientes' },
   { to: '/assistencias',label: 'Assistências',             Icon: IconWrench,    chave: 'assistencias' },
 ]
 
@@ -22,7 +26,8 @@ export default function Layout() {
   const prevRefreshed    = useRef(null)
   const [justUpdated, setJustUpdated] = useState(false)
   const [showTour,    setShowTour]    = useState(() => !localStorage.getItem(TOUR_KEY))
-  const { profile, podeVer, logout: supaLogout } = useAuth()
+  const { profile, podeVer, podeFinanceiro, logout: supaLogout } = useAuth()
+  const { empresa, empresaLabel, setEmpresa } = useCompany()
 
   async function logout() {
     qc.clear()
@@ -30,7 +35,25 @@ export default function Layout() {
     navigate('/login', { replace: true })
   }
 
-  const navVisivel = NAV.filter(n => podeVer(n.chave))
+  // Ao trocar de empresa, limpa o cache para recarregar os dados da empresa certa
+  const empresaAnterior = useRef(empresa)
+  useEffect(() => {
+    if (empresaAnterior.current !== empresa) {
+      qc.clear()
+      empresaAnterior.current = empresa
+    }
+  }, [empresa, qc])
+
+  function trocarEmpresa(e) {
+    if (e === empresa) return
+    setEmpresa(e)
+    navigate('/', { replace: true })
+  }
+
+  const podeAmbas = profile?.empresa === 'ambas'
+  // Financeiro só aparece para os e-mails autorizados (Rafael)
+  let navVisivel = NAV.filter(n => podeVer(n.chave) && (n.to !== '/financeiro' || podeFinanceiro))
+  if (empresa === 'novitah') navVisivel = navVisivel.filter(n => NAV_NOVITAH.includes(n.chave))
 
   // Pré-carrega pedidos e fornecedores em background para acesso instantâneo
   useQuery({ queryKey: ['pedidos'],              queryFn: api.pedidos,                staleTime: 5 * 60 * 1000 })
@@ -63,9 +86,29 @@ export default function Layout() {
     <div>
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 22, fontWeight: 400, letterSpacing: '0.12em', color: 'var(--text)', marginBottom: 4 }}>Alinare</div>
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.22em', color: '#f5c518' }}>COMPRAS</div>
+          <img
+            key={empresa}
+            src={EMPRESAS[empresa].logo}
+            alt={empresaLabel}
+            style={{ width: '100%', height: 'auto', objectFit: 'contain', display: 'block', borderRadius: 6 }}
+            onError={e => { e.currentTarget.style.display = 'none'; const n = e.currentTarget.nextSibling; if (n) n.style.display = 'block' }}
+          />
+          <div style={{ display: 'none', fontFamily: 'Georgia, "Times New Roman", serif', fontSize: 22, fontWeight: 400, letterSpacing: '0.12em', color: 'var(--text)' }}>{empresaLabel}</div>
         </div>
+
+        {podeAmbas && (
+          <div style={{ display: 'flex', gap: 4, padding: '0 12px', marginBottom: 4 }}>
+            {Object.entries(EMPRESAS).map(([id, cfg]) => (
+              <button key={id} onClick={() => trocarEmpresa(id)}
+                className="flex-1 rounded text-xs font-bold transition-all"
+                style={empresa === id
+                  ? { background: cfg.accent, color: '#0d0e16', padding: '5px 0' }
+                  : { background: 'var(--bg-input)', color: 'var(--text-nav)', border: '1px solid var(--border2)', padding: '5px 0' }}>
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         <nav className="flex flex-col mt-2 gap-0.5 px-2">
           {navVisivel.map(({ to, label, end, Icon }) => (
@@ -162,6 +205,15 @@ function IconCart({ size = 20 }) {
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
       <path d="M1 1h4l2.68 13.39a2 2 0 001.99 1.61h9.72a2 2 0 001.99-1.61L23 6H6"/>
+    </svg>
+  )
+}
+
+function IconMoney({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>
+      <path d="M6 12h.01M18 12h.01"/>
     </svg>
   )
 }

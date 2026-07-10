@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useCompany } from '../contexts/CompanyContext'
 import { supabase } from '../lib/supabase'
 
 const DOMINIO_PERMITIDO = 'azime.com.br'
@@ -8,6 +9,7 @@ const DOMINIO_PERMITIDO = 'azime.com.br'
 export default function LoginPage() {
   const navigate              = useNavigate()
   const { session, profile, login } = useAuth()
+  const { setEmpresa }        = useCompany()
 
   const [step,        setStep]        = useState('login')
   const [email,       setEmail]       = useState('')
@@ -34,7 +36,7 @@ export default function LoginPage() {
     }
     if (!profile.ativo) { setError('Conta bloqueada. Contate o administrador.'); setLoading(false); return }
     if (profile.empresa === 'ambas') setStep('select')
-    else navigate('/', { replace: true })
+    else { setEmpresa(profile.empresa === 'novitah' ? 'novitah' : 'alinare'); navigate('/', { replace: true }) }
   }, [session, profile, forcePwd])
 
   async function handleLogin(e) {
@@ -80,7 +82,7 @@ export default function LoginPage() {
   }
 
   function selectCompany(c) {
-    if (c === 'novitah') return
+    setEmpresa(c === 'novitah' ? 'novitah' : 'alinare')
     navigate('/', { replace: true })
   }
 
@@ -210,7 +212,7 @@ function LoginScreen({ email, setEmail, senha, setSenha, showPass, setShowPass, 
               <div style={{ flex:1, maxWidth:50, height:1, background:'linear-gradient(90deg,rgba(212,175,55,0.5),transparent)' }} />
             </div>
             <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.55em', color:'rgba(212,175,55,0.75)', textTransform:'uppercase', fontFamily:"'Segoe UI',sans-serif" }}>
-              Alinare &amp; Novitah
+              Allinare &amp; Novitah
             </div>
             <div style={{ display:'flex', alignItems:'center', gap:12, justifyContent:'center', marginTop:10 }}>
               <div style={{ flex:1, maxWidth:50, height:1, background:'linear-gradient(90deg,transparent,rgba(212,175,55,0.3))' }} />
@@ -375,7 +377,7 @@ function LoginScreen({ email, setEmail, senha, setSenha, showPass, setShowPass, 
             <div style={{ display:'flex', alignItems:'center', gap:10, justifyContent:'center' }}>
               <div style={{ flex:1, height:1, background:'rgba(255,255,255,0.04)' }} />
               <span style={{ fontSize:9, color:'#2e2e2e', letterSpacing:'0.18em', textTransform:'uppercase' }}>
-                Alinare Joias · 2026
+                Allinare Joias · 2026
               </span>
               <div style={{ flex:1, height:1, background:'rgba(255,255,255,0.04)' }} />
             </div>
@@ -638,7 +640,7 @@ function SelectScreen({ onSelect }) {
         </div>
 
         {/* NOVITAH — terracota como acento */}
-        <div className="sc sc-dis" style={{
+        <div className="sc" onClick={() => onSelect('novitah')} style={{
           width:310, borderRadius:20,
           background:'linear-gradient(160deg,#100806 0%,#0c0604 60%,#140a08 100%)',
           border:'1px solid rgba(140,70,48,0.45)',
@@ -655,7 +657,7 @@ function SelectScreen({ onSelect }) {
           <div style={{ padding:'36px 32px 32px', display:'flex', flexDirection:'column', alignItems:'center', width:'100%', boxSizing:'border-box', flex:1 }}>
             {/* Logo sem container e sem anéis */}
             <div style={{ marginBottom:28, flexShrink:0 }}>
-              <img src="/novitha.png" alt="Novitah" style={{ width:100, height:100, objectFit:'contain', borderRadius:18, filter:'brightness(0.65)' }} onError={e => e.target.style.display='none'} />
+              <img src="/novitha.png" alt="Novitah" style={{ width:100, height:100, objectFit:'contain', borderRadius:18 }} onError={e => e.target.style.display='none'} />
             </div>
 
             <div style={{ fontSize:11, fontWeight:800, letterSpacing:'0.5em', color:'rgba(180,110,85,0.8)', textTransform:'uppercase', marginBottom:20, animation:'badgePulse 3s ease-in-out infinite' }}>
@@ -665,15 +667,18 @@ function SelectScreen({ onSelect }) {
             <div style={{ width:'100%', height:1, background:'linear-gradient(90deg,transparent,rgba(160,95,75,0.28),transparent)', marginBottom:20 }} />
 
             <div style={{ fontSize:12, color:'rgba(255,255,255,0.75)', textAlign:'center', lineHeight:1.9, marginBottom:28, flex:1 }}>
-              Em desenvolvimento<br />para lançamento em breve
+              Gestão de compras, estoque,<br />fornecedores e curva ABC
             </div>
 
             <div style={{
               width:'100%', padding:'13px 0', borderRadius:10, textAlign:'center',
-              background:'rgba(160,95,75,0.08)', border:'1px solid rgba(160,95,75,0.22)',
-              color:'rgba(180,110,85,0.6)', fontWeight:800, fontSize:11, letterSpacing:'0.22em',
+              background:'linear-gradient(90deg,#3a1a10,#c05838,#e07050,#c05838,#3a1a10)',
+              backgroundSize:'200% auto', color:'#f5d8c8', fontWeight:800,
+              fontSize:11, letterSpacing:'0.22em',
+              boxShadow:'0 6px 24px rgba(120,50,30,0.5)',
+              animation:'shimmerBtnSel 2.5s linear infinite',
             }}>
-              EM BREVE
+              ACESSAR
             </div>
           </div>
         </div>
@@ -682,7 +687,7 @@ function SelectScreen({ onSelect }) {
       {/* Rodapé */}
       <div style={{ marginTop:52, textAlign:'center', animation:'fadeUp2 .65s .18s ease both', opacity:0, position:'relative', zIndex:2 }}>
         <div style={{ fontSize:9, color:'#1e1e1e', letterSpacing:'0.22em', textTransform:'uppercase' }}>
-          Alinare · Novitah · Sistemas Internos · 2026
+          Allinare · Novitah · Sistemas Internos · 2026
         </div>
       </div>
     </div>

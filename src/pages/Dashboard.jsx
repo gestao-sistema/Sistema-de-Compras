@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [grupoFilter, setGrupoFilter] = useState('')
   const [pedraFilter, setPedraFilter] = useState('')
   const [tag2Filter,  setTag2Filter]  = useState('')
+  const [fornFilter,   setFornFilter]   = useState('')
   const [catFilter,    setCatFilter]    = useState('')
   const [estoqueFilter,setEstoqueFilter]= useState('')
   const [filialFilter, setFilialFilter] = useState('')
@@ -44,13 +45,13 @@ export default function Dashboard() {
     setPage(0)
   }
   function resetFilters() {
-    setGrupoFilter(''); setPedraFilter(''); setTag2Filter(''); setCatFilter('')
+    setGrupoFilter(''); setPedraFilter(''); setTag2Filter(''); setFornFilter(''); setCatFilter('')
     setEstoqueFilter(''); setFilialFilter(''); setCodigoFilter(''); setSearch(''); setTipoFilter('todos'); setRupturaFilter(''); setPage(0)
   }
 
   const kpi = useQuery({
-    queryKey:        ['dashboard', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, estoqueFilter, filialFilter],
-    queryFn:         () => api.dashboard({ search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
+    queryKey:        ['dashboard', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, fornFilter, estoqueFilter, filialFilter],
+    queryFn:         () => api.dashboard({ search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, fornecedor: fornFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
     refetchInterval: d => d?.loading === false ? false : 3000,
     staleTime:       30000,
     placeholderData: keepPreviousData,
@@ -68,16 +69,16 @@ export default function Dashboard() {
   const opts = optionsQ.data || { grupos: [], pedras: [], tag2s: [], categorias: [] }
 
   const groupQ = useQuery({
-    queryKey:        ['produtos-group', tab, dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, catFilter, estoqueFilter, filialFilter],
-    queryFn:         () => api.produtos({ view: tab, search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, categoria: catFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
+    queryKey:        ['produtos-group', tab, dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter],
+    queryFn:         () => api.produtos({ view: tab, search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
     enabled:         loaded && tab !== 'produto',
     staleTime:       30000,
     placeholderData: keepPreviousData,
   })
 
   const listQ = useQuery({
-    queryKey:        ['produtos-list', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, catFilter, estoqueFilter, filialFilter, page, sortK, sortD],
-    queryFn:         () => api.produtos({ view: 'list', page, limit: PAGE_LIMIT, sort: sortK, dir: sortD, search: dbSearch, tipo: tipoFilter, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, categoria: catFilter, codigo: dbCodigo, ruptura: rupturaFilter || undefined, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
+    queryKey:        ['produtos-list', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter, page, sortK, sortD],
+    queryFn:         () => api.produtos({ view: 'list', page, limit: PAGE_LIMIT, sort: sortK, dir: sortD, search: dbSearch, tipo: tipoFilter, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, codigo: dbCodigo, ruptura: rupturaFilter || undefined, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
 
     enabled:         loaded && tab === 'produto',
     staleTime:       30000,
@@ -96,7 +97,7 @@ export default function Dashboard() {
   const totalRuptura = listQ.data?.totalRuptura   ?? 0
   const totalPages = Math.ceil(listTotal / PAGE_LIMIT)
 
-  const hasFilters = grupoFilter || pedraFilter || tag2Filter || catFilter || estoqueFilter || filialFilter || codigoFilter || dbSearch || tipoFilter !== 'todos' || rupturaFilter !== ''
+  const hasFilters = grupoFilter || pedraFilter || tag2Filter || fornFilter || catFilter || estoqueFilter || filialFilter || codigoFilter || dbSearch || tipoFilter !== 'todos' || rupturaFilter !== ''
 
   return (
     <div>
@@ -201,6 +202,15 @@ export default function Dashboard() {
                 <select value={tag2Filter} onChange={e => { setTag2Filter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 120 }}>
                   <option value="">Todas</option>
                   {opts.tag2s.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
+              {/* Fornecedor */}
+              <div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Fornecedor</div>
+                <select value={fornFilter} onChange={e => { setFornFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 160 }}>
+                  <option value="">Todos</option>
+                  {(opts.fornecedores || []).map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
               </div>
 
@@ -315,11 +325,12 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
       <div className="tbl-scroll">
         <table className="tbl" style={{ tableLayout: 'fixed', width: '100%' }}>
           <colgroup>
+            <col style={{ width: 78 }} />
+            <col style={{ width: 100 }} />
             <col style={{ width: 80 }} />
-            <col style={{ width: 110 }} />
-            <col style={{ width: 85 }} />
-            <col style={{ width: 220 }} />
-            <col style={{ width: 80 }} />
+            <col style={{ width: 125 }} />
+            <col style={{ width: 175 }} />
+            <col style={{ width: 78 }} />
             <col style={{ width: 95 }} />
             <col style={{ width: 85 }} />
             <col style={{ width: 65 }} />
@@ -333,6 +344,7 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
               <TH k="grupo"       label="Grupo" />
               <TH k="pedra"       label="Tipo de Pedra" />
               <TH k="tag2"        label="TAG 2" />
+              <TH k="nomeFornecedor" label="Fornecedor" />
               <TH k="descricao"   label="SKU" />
               <TH k="_saldo"      label="Estoque"     align="center" />
               <TH k="_saldoDisp"  label="Disponível"  align="center" />
@@ -346,13 +358,14 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
           </thead>
           <tbody>
             {rows.length === 0 && !isFetching && (
-              <tr><td colSpan={12}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
+              <tr><td colSpan={13}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
             )}
             {rows.map((row, i) => (
               <tr key={i}>
                 <td style={{ color: '#fff', fontWeight: 700, fontSize: 12 }}>{row.grupo ?? '-'}</td>
                 <td style={{ color: '#00b4d8', fontSize: 12 }}>{row.pedra || '-'}</td>
-                <td style={{ color: '#f5c518', fontSize: 12 }}>{row.tag2 || '-'}</td>
+                <td style={{ color: '#f5c518', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.tag2}>{row.tag2 || '-'}</td>
+                <td style={{ color: 'var(--accent-title, #f5c518)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.nomeFornecedor}>{row.nomeFornecedor || '-'}</td>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <FotoZoom url={row._foto} alt={row.descricao} />

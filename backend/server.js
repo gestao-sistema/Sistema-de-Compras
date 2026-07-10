@@ -17,6 +17,15 @@ const FOTO_BASE    = 'https://fotos.alinare.indepcloud.com.br'
 const BLIP_TOKEN    = '81cbd168-790a-409b-b5d1-2df9c6a1fc61'
 const COMPRAS_TOKEN = 'f7d36a19-b46b-4fc9-b064-db8e15be9110'
 
+// ─── Empresas (multiempresa) ─────────────────────────────────────────────────
+const FIN_BASE = 'https://api.financeiro.alinare.indepcloud.com.br:30662'
+const EMPRESAS = {
+  alinare: { base: COMPRAS_BASE, token: COMPRAS_TOKEN, diskFile: 'cache_compras.json', seedFile: 'cache_seed.json.gz', finBase: FIN_BASE, finToken: '2c9a971c-e798-4d92-b217-f1ee4b812a8c' },
+  novitah: { base: 'https://api.compras.novitah.indepcloud.com.br:29534', token: '41074c2b-be93-49b0-92f1-14449259092c', diskFile: 'cache_novitah.json', seedFile: 'cache_novitah_seed.json.gz', finBase: 'https://api.financeiro.novitah.indepcloud.com.br:29539', finToken: '50d267c1-aab1-4640-aa5f-8c808f62a2fb' },
+}
+const EMPRESA_IDS = Object.keys(EMPRESAS)
+const empValida = e => (EMPRESAS[e] ? e : 'alinare')
+
 app.use(cors())
 app.use(express.json())
 
@@ -25,7 +34,6 @@ app.use(express.json())
 // CACHE_DIR: aponte para um Railway Volume (ex: /data) para o cache sobreviver a deploys.
 // Sem ele, cai no diretório da app (efêmero na Railway, persistente localmente).
 const CACHE_DIR       = process.env.CACHE_DIR || __dirname
-const DISK_CACHE      = path.join(CACHE_DIR, 'cache_compras.json')
 const CACHE_TTL       = 30 * 60 * 1000   // 30 minutos (refresh automático)
 const DISK_MAX_AGE    = 12 * 60 * 60 * 1000  // disco válido por 12h para startup rápido
 const REFRESH_PAUSE   = 10 * 60 * 1000   // espera 10 min APÓS concluir antes de reatualizar
@@ -33,36 +41,53 @@ const REFRESH_PAUSE   = 10 * 60 * 1000   // espera 10 min APÓS concluir antes d
 // Persiste em disco localmente OU quando há um Volume configurado (CACHE_DIR) na Railway.
 const DISK_PERSIST    = !process.env.RAILWAY_ENVIRONMENT || !!process.env.CACHE_DIR
 
-const cache = new Map()
+// Estado isolado por empresa (cache, warm, fetch em andamento, pedidos, fornecedores)
+function novoStore() {
+  return {
+    cache: new Map(),
+    warmState: { done: false, pais: 0, skus: 0, error: null, startedAt: null, lastRefreshed: null },
+    fetching: null,
+    refreshing: false,
+    pedidosCache: null, pedidosCacheAt: 0,
+    pedidosItens: null, pedidosItensAt: 0,
+    fornCache: null, fornCacheAt: 0,
+    finCache: null, finCacheAt: 0, finFetching: null,
+  }
+}
+const STORES = Object.fromEntries(EMPRESA_IDS.map(e => [e, novoStore()]))
+const S = e => STORES[empValida(e)]
 
-function cacheGet(k) {
-  const e = cache.get(k)
+function cacheGet(emp, k) {
+  const e = S(emp).cache.get(k)
   return (e && Date.now() - e.ts < CACHE_TTL) ? e.data : null
 }
 
-function cacheSet(k, d) {
-  cache.set(k, { data: d, ts: Date.now() })
+function cacheSet(emp, k, d) {
+  S(emp).cache.set(k, { data: d, ts: Date.now() })
   if (k === 'compras_all' && DISK_PERSIST) {
     try {
       fs.mkdirSync(CACHE_DIR, { recursive: true })
-      fs.writeFileSync(DISK_CACHE, JSON.stringify({ ts: Date.now(), data: d }))
-      console.log(`[disk] cache salvo: ${d.length} produtos em ${DISK_CACHE}`)
-    } catch (e) { console.error('[disk] erro ao salvar:', e.message) }
+      const file = path.join(CACHE_DIR, EMPRESAS[empValida(emp)].diskFile)
+      fs.writeFileSync(file, JSON.stringify({ ts: Date.now(), data: d }))
+      console.log(`[disk:${emp}] cache salvo: ${d.length} produtos em ${file}`)
+    } catch (e) { console.error(`[disk:${emp}] erro ao salvar:`, e.message) }
   }
 }
 
-function loadDiskCache() {
+function loadDiskCache(emp) {
   try {
+    const cfg  = EMPRESAS[empValida(emp)]
+    const file = path.join(CACHE_DIR, cfg.diskFile)
     let raw = null
-    if (fs.existsSync(DISK_CACHE)) {
-      raw = fs.readFileSync(DISK_CACHE, 'utf8')
-    } else {
+    if (fs.existsSync(file)) {
+      raw = fs.readFileSync(file, 'utf8')
+    } else if (cfg.seedFile) {
       // Seed compactado versionado no repo — garante produtos no boot mesmo
       // quando a API está instável (sem depender de fetch ao vivo no deploy).
-      const seed = path.join(__dirname, 'cache_seed.json.gz')
+      const seed = path.join(__dirname, cfg.seedFile)
       if (fs.existsSync(seed)) {
         raw = require('zlib').gunzipSync(fs.readFileSync(seed)).toString('utf8')
-        console.log('[disk] usando seed compactado do repositório')
+        console.log(`[disk:${emp}] usando seed compactado do repositório`)
       }
     }
     if (!raw) return null
@@ -71,23 +96,18 @@ function loadDiskCache() {
     // Serve o cache do disco mesmo se estiver antigo — melhor mostrar dados na hora
     // (e atualizar em background) do que travar a tela quando a API está instável.
     const tag = age > DISK_MAX_AGE ? 'ANTIGO — atualizando em background' : `${Math.round(age/60000)}min atrás`
-    console.log(`[disk] cache carregado: ${obj.data.length} produtos (${tag})`)
-    cache.set('compras_all', { data: obj.data, ts: obj.ts })
-    warmState.lastRefreshed = obj.ts  // mostra quando os dados realmente foram buscados
+    console.log(`[disk:${emp}] cache carregado: ${obj.data.length} produtos (${tag})`)
+    S(emp).cache.set('compras_all', { data: obj.data, ts: obj.ts })
+    S(emp).warmState.lastRefreshed = obj.ts  // mostra quando os dados realmente foram buscados
     return obj.data
-  } catch (e) { console.error('[disk] erro ao ler:', e.message); return null }
+  } catch (e) { console.error(`[disk:${emp}] erro ao ler:`, e.message); return null }
 }
 
-// ─── Grupos permitidos ───────────────────────────────────────────────────────
+// ─── Grupos excluídos ─────────────────────────────────────────────────────────
+// Traz TODOS os produtos; descarta apenas o que não é produto (ex.: certificados).
+// (Antes era lista-branca fixa da Alinare, que derrubava grupos da Novitah como COLAR.)
 
-const GRUPOS = new Set([
-  'PULSEIRA', 'BRINCO', 'ANEL', 'CORRENTE',
-  'CONJUNTO', 'PINGENTE', 'TORNOZELEIRA', 'TARRAXA',
-])
-
-// ─── estado do pré-aquecimento ───────────────────────────────────────────────
-
-const warmState = { done: false, pais: 0, skus: 0, error: null, startedAt: null, lastRefreshed: null }
+const GRUPOS_EXCLUIR = new Set(['CERTIFICADO', ''])
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -120,13 +140,13 @@ function parseDateBR(s) {
 
 // ─── Busca direta da API (sem cache) ─────────────────────────────────────────
 
-let _fetchingPromise = null   // evita chamadas simultâneas
-
-async function fetchFromAPI() {
+async function fetchFromAPI(emp = 'alinare') {
+  const cfg = EMPRESAS[empValida(emp)]
+  const st  = S(emp)
   // Se já há uma busca em andamento, aguarda a mesma promise
-  if (_fetchingPromise) return _fetchingPromise
+  if (st.fetching) return st.fetching
 
-  _fetchingPromise = (async () => {
+  st.fetching = (async () => {
     // Páginas menores: respostas ~2 MB carregam de forma confiável na Railway
     // (páginas de 1000 itens = ~8 MB penduravam a conexão do container).
     const PAGE        = 250
@@ -135,10 +155,10 @@ async function fetchFromAPI() {
     let   page        = 1
     let   emptyStreak = 0    // só conta páginas REALMENTE vazias (fim da API)
 
-    console.log('[API] buscando produtos pai (sequencial, sem parar em erro)…')
+    console.log(`[API:${emp}] buscando produtos pai (sequencial, sem parar em erro)…`)
 
     while (true) {
-      const url = new URL(`${COMPRAS_BASE}/Compras`)
+      const url = new URL(`${cfg.base}/Compras`)
       url.searchParams.set('limit', String(PAGE))
       url.searchParams.set('page',  String(page))
 
@@ -146,7 +166,7 @@ async function fetchFromAPI() {
       for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
         try {
           const { data } = await axios.get(url.toString(), {
-            headers:    { Token: COMPRAS_TOKEN },
+            headers:    { Token: cfg.token },
             httpsAgent,
             timeout:    90000,   // falha rápido (90s) se a página pendurar, e re-tenta
             decompress: true,
@@ -177,33 +197,33 @@ async function fetchFromAPI() {
         // Qualquer quantidade de itens (mesmo 1) é dado válido
         emptyStreak = 0
         all.push(...result)
-        warmState.pais = all.length
-        console.log(`[API] pág ${page} → +${result.length} (total ${all.length})`)
+        st.warmState.pais = all.length
+        console.log(`[API:${emp}] pág ${page} → +${result.length} (total ${all.length})`)
       }
 
       page++
       if (page > 500) break
     }
 
-    console.log(`[API] total final: ${all.length} produtos pai`)
+    console.log(`[API:${emp}] total final: ${all.length} produtos pai`)
     return all
-  })().finally(() => { _fetchingPromise = null })
+  })().finally(() => { st.fetching = null })
 
-  return _fetchingPromise
+  return st.fetching
 }
 
 // ─── Busca TODAS as páginas (com cache) ──────────────────────────────────────
 
-async function fetchAllCompras() {
+async function fetchAllCompras(emp = 'alinare') {
   const key = 'compras_all'
-  const hit = cacheGet(key)
-  if (hit) { console.log(`[cache] ${hit.length} produtos pai`); return hit }
+  const hit = cacheGet(emp, key)
+  if (hit) { console.log(`[cache:${emp}] ${hit.length} produtos pai`); return hit }
 
-  const disk = loadDiskCache()
-  if (disk) { warmState.pais = disk.length; return disk }
+  const disk = loadDiskCache(emp)
+  if (disk) { S(emp).warmState.pais = disk.length; return disk }
 
-  const all = await fetchFromAPI()
-  cacheSet(key, all)
+  const all = await fetchFromAPI(emp)
+  cacheSet(emp, key, all)
   return all
 }
 
@@ -212,15 +232,15 @@ async function fetchAllCompras() {
 function expandVariacoes(parents) {
   const rows = []
   parents.forEach(pai => {
-    // Filtra grupos que não interessam
-    const grupoPai = (pai.grupo || '').toUpperCase()
-    if (!GRUPOS.has(grupoPai)) return
+    // Descarta apenas grupos que não são produto (certificado, sem grupo)
+    const grupoPai = (pai.grupo || '').toUpperCase().trim()
+    if (GRUPOS_EXCLUIR.has(grupoPai)) return
 
     const variacoes = pai.variacoes || []
     if (variacoes.length === 0) { rows.push(buildRow(pai, null)); return }
     variacoes.forEach(v => {
-      const grupoV = (v.grupo || grupoPai).toUpperCase()
-      if (GRUPOS.has(grupoV)) rows.push(buildRow(pai, v))
+      const grupoV = (v.grupo || grupoPai).toUpperCase().trim()
+      if (!GRUPOS_EXCLUIR.has(grupoV)) rows.push(buildRow(pai, v))
     })
   })
   return rows
@@ -306,12 +326,12 @@ function buildRow(pai, v) {
 
 // ─── Calcula ABC e retorna lista pronta ───────────────────────────────────────
 
-async function getProdutos() {
+async function getProdutos(emp = 'alinare') {
   const key = 'produtos_enriched'
-  const hit = cacheGet(key)
+  const hit = cacheGet(emp, key)
   if (hit) return hit
 
-  const parents = await fetchAllCompras()
+  const parents = await fetchAllCompras(emp)
   const items   = expandVariacoes(parents)
 
   items.sort((a, b) => b._valorEst - a._valorEst)
@@ -322,31 +342,30 @@ async function getProdutos() {
     i._abc = total > 0 ? (cum / total <= 0.8 ? 'A' : cum / total <= 0.95 ? 'B' : 'C') : '-'
   })
 
-  warmState.skus = items.length
-  warmState.done = true
-  cacheSet(key, items)
+  S(emp).warmState.skus = items.length
+  S(emp).warmState.done = true
+  cacheSet(emp, key, items)
   return items
 }
 
 // ─── Pré-aquece e agenda refresh automático a cada 30 min ───────────────────
 
-let refreshing = false
-
-async function refresh() {
-  if (refreshing) return
-  refreshing = true
-  warmState.error = null
+async function refresh(emp = 'alinare') {
+  const st = S(emp)
+  if (st.refreshing) return
+  st.refreshing = true
+  st.warmState.error = null
 
   try {
-    console.log('[refresh] buscando dados novos (dados antigos permanecem disponíveis)…')
+    console.log(`[refresh:${emp}] buscando dados novos (dados antigos permanecem disponíveis)…`)
 
-    const parents = await fetchFromAPI()
+    const parents = await fetchFromAPI(emp)
 
     // Valida integridade: só descarta se o novo fetch trouxe muito menos que o anterior
-    const prevCache = cacheGet('compras_all')
+    const prevCache = cacheGet(emp, 'compras_all')
     const prevCount = prevCache ? prevCache.length : 0
     if (prevCount > 0 && parents.length < prevCount * 0.80) {
-      console.warn(`[refresh] DESCARTADO — novo fetch retornou ${parents.length} produtos mas o cache tem ${prevCount} (< 80%). Mantendo dados anteriores.`)
+      console.warn(`[refresh:${emp}] DESCARTADO — novo fetch retornou ${parents.length} produtos mas o cache tem ${prevCount} (< 80%). Mantendo dados anteriores.`)
       return
     }
 
@@ -361,45 +380,57 @@ async function refresh() {
     })
 
     // Substitui cache atomicamente — só agora os dados antigos são trocados
-    cacheSet('compras_all', parents)
-    cacheSet('produtos_enriched', items)
-    warmState.skus          = items.length
-    warmState.pais          = parents.length
-    warmState.done          = true
-    warmState.lastRefreshed = Date.now()
-    console.log(`[refresh] concluído: ${items.length} SKUs às ${new Date().toLocaleTimeString('pt-BR')}`)
+    cacheSet(emp, 'compras_all', parents)
+    cacheSet(emp, 'produtos_enriched', items)
+    st.warmState.skus          = items.length
+    st.warmState.pais          = parents.length
+    st.warmState.done          = true
+    st.warmState.lastRefreshed = Date.now()
+    console.log(`[refresh:${emp}] concluído: ${items.length} SKUs às ${new Date().toLocaleTimeString('pt-BR')}`)
   } catch (e) {
-    warmState.error = e.message
-    console.error('[refresh] erro:', e.message)
+    st.warmState.error = e.message
+    console.error(`[refresh:${emp}] erro:`, e.message)
   } finally {
-    refreshing = false
+    st.refreshing = false
   }
 }
 
 // Carga inicial: usa disco se disponível (startup rápido), senão busca API
-async function initialLoad() {
-  warmState.startedAt = Date.now()
+async function initialLoad(emp = 'alinare') {
+  const st = S(emp)
+  st.warmState.startedAt = Date.now()
   try {
-    await getProdutos()   // usa disco se fresco, senão busca API
-    // lastRefreshed: se disco foi usado, já foi setado em loadDiskCache; caso contrário é agora
-    if (!warmState.lastRefreshed) warmState.lastRefreshed = Date.now()
-    console.log(`[warm] pronto: ${warmState.skus} SKUs`)
+    await getProdutos(emp)   // usa disco se fresco, senão busca API
+    if (!st.warmState.lastRefreshed) st.warmState.lastRefreshed = Date.now()
+    console.log(`[warm:${emp}] pronto: ${st.warmState.skus} SKUs`)
   } catch (e) {
-    warmState.error = e.message
-    console.error('[warm] erro:', e.message)
+    st.warmState.error = e.message
+    console.error(`[warm:${emp}] erro:`, e.message)
   }
 }
 
 // Loop contínuo: concluiu uma atualização → espera 10 min → reatualiza.
 async function refreshLoop() {
-  await initialLoad()
-  // Pré-aquece pedidos, fornecedores e assistências em background após produtos carregarem
-  warmPedidosForn().catch(() => {})
-  warmAssistencias().catch(() => {})
+  await initialLoad('alinare')              // Alinare do seed → instantâneo
+  warmPedidosForn('alinare').catch(() => {})
+  // Assistências da Alinare têm prioridade; só depois inicia o fetch pesado da Novitah
+  // para não competir por banda/CPU no boot.
+  warmAssistencias()
+    .catch(() => {})
+    .finally(() => {
+      initialLoad('novitah').then(() => warmPedidosForn('novitah')).catch(() => {})
+      // Financeiro é pesado (Allinare ~24 páginas); aquece por último, sem bloquear
+      // nada, e a Novitah só depois da Allinare para não competirem.
+      fetchFinanceiro('alinare').catch(() => {}).finally(() => fetchFinanceiro('novitah').catch(() => {}))
+    })
   while (true) {
-    await refresh()
-    warmPedidosForn().catch(() => {})
+    await refresh('alinare')
+    warmPedidosForn('alinare').catch(() => {})
     warmAssistencias().catch(() => {})
+    // Financeiro NÃO é reaquecido a cada ciclo (uso restrito ao Rafael) — fica
+    // on-demand com serve-stale; só aquece uma vez no boot acima.
+    // Novitah em background para não atrasar o ciclo da Alinare
+    refresh('novitah').then(() => warmPedidosForn('novitah')).catch(() => {})
     // Pausa de 10 min após concluir antes de iniciar a próxima atualização
     await new Promise(r => setTimeout(r, REFRESH_PAUSE))
   }
@@ -410,29 +441,25 @@ refreshLoop()
 // ─── endpoints ───────────────────────────────────────────────────────────────
 
 // ── Pedidos de compra ────────────────────────────────────────────────────────
-let _pedidosCache    = null
-let _pedidosCacheAt  = 0
-let _pedidosItens    = null
-let _pedidosItensAt  = 0
-let _fornCache       = null
-let _fornCacheAt     = 0
 const PEDIDOS_TTL    = 10 * 60 * 1000 // 10 min
 
-async function fetchPedidos() {
-  if (_pedidosCache && Date.now() - _pedidosCacheAt < PEDIDOS_TTL) return _pedidosCache
-  const { data } = await axios.get(`${COMPRAS_BASE}/Compras/Pedidos`, {
-    headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 60000,
+async function fetchPedidos(emp = 'alinare') {
+  const st = S(emp), cfg = EMPRESAS[empValida(emp)]
+  if (st.pedidosCache && Date.now() - st.pedidosCacheAt < PEDIDOS_TTL) return st.pedidosCache
+  const { data } = await axios.get(`${cfg.base}/Compras/Pedidos`, {
+    headers: { Token: cfg.token }, httpsAgent, timeout: 60000,
   })
-  _pedidosCache = data
-  _pedidosCacheAt = Date.now()
+  st.pedidosCache = data
+  st.pedidosCacheAt = Date.now()
   return data
 }
 
 // Constrói lista de todos os itens pendentes com cache próprio
-async function buildPedidosItens() {
-  if (_pedidosItens && Date.now() - _pedidosItensAt < PEDIDOS_TTL) return _pedidosItens
-  const raw = await fetchPedidos()
-  const all = await getProdutos()
+async function buildPedidosItens(emp = 'alinare') {
+  const st = S(emp)
+  if (st.pedidosItens && Date.now() - st.pedidosItensAt < PEDIDOS_TTL) return st.pedidosItens
+  const raw = await fetchPedidos(emp)
+  const all = await getProdutos(emp)
   const grupoMap = {}, fotoMap = {}
   all.forEach(p => {
     if (p.produto) { grupoMap[p.produto] = p.grupo || ''; fotoMap[p.produto] = p._foto || '' }
@@ -466,23 +493,23 @@ async function buildPedidosItens() {
       })
     })
   })
-  _pedidosItens   = itens
-  _pedidosItensAt = Date.now()
+  st.pedidosItens   = itens
+  st.pedidosItensAt = Date.now()
   return itens
 }
 
 
 // Pré-aquece pedidos + fornecedores no background
-async function warmPedidosForn() {
+async function warmPedidosForn(emp = 'alinare') {
   try {
-    console.log('[warm] pré-aquecendo pedidos e fornecedores...')
-    await buildPedidosItens()
+    console.log(`[warm:${emp}] pré-aquecendo pedidos e fornecedores...`)
+    await buildPedidosItens(emp)
     // Invalida cache de fornecedores para recomputar com dados frescos
-    _fornCache   = null
-    _fornCacheAt = 0
-    console.log('[warm] pedidos e fornecedores prontos')
+    S(emp).fornCache   = null
+    S(emp).fornCacheAt = 0
+    console.log(`[warm:${emp}] pedidos e fornecedores prontos`)
   } catch (e) {
-    console.warn('[warm] erro:', e.message)
+    console.warn(`[warm:${emp}] erro:`, e.message)
   }
 }
 
@@ -499,7 +526,7 @@ async function warmAssistencias() {
 
 app.get('/api/pedidos', async (req, res) => {
   try {
-    const itens = await buildPedidosItens()
+    const itens = await buildPedidosItens(empValida(req.query.empresa))
     // Totais sem filtro (para KPIs)
     const pedidosUnicos = [...new Set(itens.map(i => i.pedido))].length
     const totalSaldo    = itens.reduce((s, i) => s + i.qtdSaldo,  0)
@@ -513,7 +540,7 @@ app.get('/api/pedidos', async (req, res) => {
 // Mapa produto → { qtd, datas[] } em pedidos abertos (para ComprasPage) — apenas 2026+
 app.get('/api/pedidos/por-produto', async (req, res) => {
   try {
-    const todos = await buildPedidosItens()
+    const todos = await buildPedidosItens(empValida(req.query.empresa))
     const itens = todos.filter(it => {
       const p = (it.emissao || '').split('/'); return p.length === 3 && parseInt(p[2]) >= 2026
     })
@@ -531,18 +558,19 @@ app.get('/api/pedidos/por-produto', async (req, res) => {
 // ─── Fornecedores ─────────────────────────────────────────────────────────────
 const FORN_TTL = 10 * 60 * 1000 // 10 min
 
-async function buildFornecedores() {
-  if (_fornCache && Date.now() - _fornCacheAt < FORN_TTL) return _fornCache
+async function buildFornecedores(emp = 'alinare') {
+  const st = S(emp)
+  if (st.fornCache && Date.now() - st.fornCacheAt < FORN_TTL) return st.fornCache
 
   // fonte 1: todos os produtos do catálogo (têm nome_fornecedor)
-  const prods = await getProdutos()
+  const prods = await getProdutos(emp)
 
   // fonte 2: pedidos de compra (para cruzar qtd comprada, valor, saldo pendente)
-  const pedidosItens = await buildPedidosItens()
+  const pedidosItens = await buildPedidosItens(emp)
 
   const result = _computeFornecedores(prods, pedidosItens, null, null, null)
-  _fornCache   = result
-  _fornCacheAt = Date.now()
+  st.fornCache   = result
+  st.fornCacheAt = Date.now()
   return result
 }
 
@@ -699,18 +727,19 @@ function _computeFornecedores(prods, pedidosItens, dataInicio, dataFim, fornFilt
 
 app.get('/api/fornecedores', async (req, res) => {
   try {
+    const emp = empValida(req.query.empresa)
     const { dataInicio, dataFim, fornecedor: fornFiltro } = req.query
     const temFiltro = dataInicio || dataFim || fornFiltro
 
     if (!temFiltro) {
       // Sem filtros → usa cache computado no startup
-      const cached = await buildFornecedores()
+      const cached = await buildFornecedores(emp)
       return res.json(cached)
     }
 
     // Com filtros → recalcula em cima dos dados já cacheados
-    const prods        = await getProdutos()
-    const pedidosItens = await buildPedidosItens()
+    const prods        = await getProdutos(emp)
+    const pedidosItens = await buildPedidosItens(emp)
     const result = _computeFornecedores(prods, pedidosItens, dataInicio, dataFim, fornFiltro)
     res.json(result)
   } catch (e) { res.status(500).json({ error: e.message }) }
@@ -779,7 +808,7 @@ app.get('/api/debug/foto', async (req, res) => {
 app.get('/api/debug/contar', async (req, res) => {
   try {
     // Pega total no cache atual
-    const cached = cacheGet('compras_all')
+    const cached = cacheGet('alinare', 'compras_all')
     const noCache = cached ? cached.length : 0
 
     // Busca pág 1 e pág 2 direto da API para estimar total
@@ -799,7 +828,7 @@ app.get('/api/debug/contar', async (req, res) => {
       pagina_1: p1,
       pagina_2: p2,
       pagina_20: p20,
-      ultima_atualizacao: warmState.lastRefreshed ? new Date(warmState.lastRefreshed).toLocaleString('pt-BR') : null,
+      ultima_atualizacao: S('alinare').warmState.lastRefreshed ? new Date(S('alinare').warmState.lastRefreshed).toLocaleString('pt-BR') : null,
     })
   } catch (e) {
     res.status(500).json({ erro: e.message })
@@ -846,20 +875,23 @@ app.get('/api/debug/api-raw', async (req, res) => {
 // Força recarregamento completo: apaga cache em disco e memória, busca API do zero
 app.post('/api/admin/force-refresh', async (req, res) => {
   try {
-    // Apaga cache de memória
-    cache.clear()
-    // Apaga cache de disco
-    if (fs.existsSync(DISK_CACHE)) fs.unlinkSync(DISK_CACHE)
-    console.log('[force-refresh] cache limpo, rebuscando API do zero…')
+    const emp = empValida(req.query.empresa)
+    // Apaga cache de memória da empresa
+    S(emp).cache.clear()
+    // Apaga cache de disco da empresa
+    const file = path.join(CACHE_DIR, EMPRESAS[emp].diskFile)
+    if (fs.existsSync(file)) fs.unlinkSync(file)
+    console.log(`[force-refresh:${emp}] cache limpo, rebuscando API do zero…`)
     res.json({ ok: true, mensagem: 'Cache limpo. Rebuscando dados da API em background…' })
     // Dispara refresh em background (não bloqueia resposta)
-    refresh().catch(e => console.error('[force-refresh] erro:', e.message))
+    refresh(emp).catch(e => console.error(`[force-refresh:${emp}] erro:`, e.message))
   } catch (e) {
     res.status(500).json({ erro: e.message })
   }
 })
 
 app.get('/api/status', (req, res) => {
+  const warmState = S(req.query.empresa).warmState
   const elapsed = Math.round((Date.now() - warmState.startedAt) / 1000)
   res.json({ ...warmState, elapsed })
 })
@@ -874,7 +906,7 @@ app.get('/api/compras', async (req, res) => {
 
 app.get('/api/produtos/options', async (req, res) => {
   try {
-    const all    = await getProdutos()
+    const all    = await getProdutos(empValida(req.query.empresa))
     const grupos      = [...new Set(all.map(i => i.grupo).filter(Boolean))].sort()
     const pedras      = [...new Set(all.map(i => i.pedra).filter(Boolean))].sort()
     const tag2s       = [...new Set(all.map(i => i.tag2).filter(Boolean))].sort()
@@ -898,8 +930,8 @@ function applyFilial(items, filial) {
 
 app.get('/api/produtos', async (req, res) => {
   try {
-    const all = await getProdutos()
-    const { view = 'list', page = '0', limit = '100', sort = '_valorEst', dir = 'desc', search = '', tipo = 'todos', grupo: gf = '', pedra: pf = '', tag2: tf = '', codigo: cf = '', ruptura: rf = '', categoria: catf = '', estoque: esf = '', filial: fil = '' } = req.query
+    const all = await getProdutos(empValida(req.query.empresa))
+    const { view = 'list', page = '0', limit = '100', sort = '_valorEst', dir = 'desc', search = '', tipo = 'todos', grupo: gf = '', pedra: pf = '', tag2: tf = '', codigo: cf = '', ruptura: rf = '', categoria: catf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '' } = req.query
 
     // ── Agrupado (poucas linhas, retorna tudo) ──────────────────────────────
     if (view !== 'list') {
@@ -912,6 +944,7 @@ app.get('/api/produtos', async (req, res) => {
       if (pf)    grpItems = grpItems.filter(i => (i.pedra     || '').toLowerCase() === pf.toLowerCase())
       if (tf)    grpItems = grpItems.filter(i => (i.tag2      || '').toLowerCase() === tf.toLowerCase())
       if (catf)  grpItems = grpItems.filter(i => (i.categoria || '').toLowerCase() === catf.toLowerCase())
+      if (ff)    grpItems = grpItems.filter(i => (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase())
       if (tipo !== 'todos') grpItems = grpItems.filter(i => tipo === 'novo' ? i.isNovo : !i.isNovo)
       if (rf)    grpItems = grpItems.filter(i => rf === 'risco' ? (i._dde < 30 && i._dde < 9999) : rf === 'ruptura' ? i._dde === 0 : true)
       if (esf === 'com')   grpItems = grpItems.filter(i => i._saldo > 0)
@@ -951,6 +984,7 @@ app.get('/api/produtos', async (req, res) => {
     if (pf)    items = items.filter(i => (i.pedra     || '').toLowerCase() === pf.toLowerCase())
     if (tf)    items = items.filter(i => (i.tag2      || '').toLowerCase() === tf.toLowerCase())
     if (catf)  items = items.filter(i => (i.categoria || '').toLowerCase() === catf.toLowerCase())
+    if (ff)    items = items.filter(i => (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase())
 
     const totalNovo      = items.filter(i => i.isNovo === true).length
     const totalReposicao = items.filter(i => i.isNovo === false).length
@@ -980,12 +1014,13 @@ app.get('/api/produtos', async (req, res) => {
 
 app.get('/api/compras/totais', async (req, res) => {
   try {
-    const all       = await getProdutos()
+    const emp       = empValida(req.query.empresa)
+    const all       = await getProdutos(emp)
     const cobertura = Math.max(1, parseInt(req.query.cobertura) || 60)
     const { grupo: gf = '', pedra: pf = '', tag2: tf = '', search: sq = '', codigo: cf = '', filial: fil = '' } = req.query
 
     // mapa de pedidos abertos (apenas 2026+) para descontar do valor de reposição
-    const todosItens = await buildPedidosItens()
+    const todosItens = await buildPedidosItens(emp)
     const pedidosItens = todosItens.filter(it => {
       const p = (it.emissao || '').split('/'); return p.length === 3 && parseInt(p[2]) >= 2026
     })
@@ -1022,7 +1057,7 @@ app.get('/api/compras/totais', async (req, res) => {
 
 app.get('/api/compras/export', async (req, res) => {
   try {
-    const all = await getProdutos()
+    const all = await getProdutos(empValida(req.query.empresa))
     const { ruptura: rf = 'risco', grupo: gf = '', pedra: pf = '', tag2: tf = '', search: sq = '', cobertura: cob = '60', filial: fil = '' } = req.query
     const cobertura = Math.max(1, parseInt(cob) || 60)
 
@@ -1078,7 +1113,7 @@ app.get('/api/sugestoes', async (req, res) => {
 
 app.get('/api/abc', async (req, res) => {
   try {
-    const all = await getProdutos()
+    const all = await getProdutos(empValida(req.query.empresa))
     const {
       tipo  = 'faturamento',
       abc:  abcF = '',
@@ -1148,6 +1183,8 @@ app.get('/api/abc', async (req, res) => {
 
 app.get('/api/dashboard', async (req, res) => {
   try {
+    const emp = empValida(req.query.empresa)
+    const warmState = S(emp).warmState
     if (!warmState.done) {
       return res.json({
         loading:       true,
@@ -1157,8 +1194,8 @@ app.get('/api/dashboard', async (req, res) => {
       })
     }
 
-    const all = await getProdutos()
-    const { grupo: gf = '', pedra: pf = '', tag2: tf = '', search: sq = '', codigo: cf = '', tipo = 'todos', ruptura: rf = '', estoque: esf = '', filial: fil = '' } = req.query
+    const all = await getProdutos(emp)
+    const { grupo: gf = '', pedra: pf = '', tag2: tf = '', search: sq = '', codigo: cf = '', tipo = 'todos', ruptura: rf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '' } = req.query
 
     let items = applyFilial(all, fil)
     const q = sq.trim().toLowerCase()
@@ -1167,6 +1204,7 @@ app.get('/api/dashboard', async (req, res) => {
     if (gf)  items = items.filter(i => (i.grupo || '').toLowerCase() === gf.toLowerCase())
     if (pf)  items = items.filter(i => (i.pedra || '').toLowerCase() === pf.toLowerCase())
     if (tf)  items = items.filter(i => (i.tag2  || '').toLowerCase() === tf.toLowerCase())
+    if (ff)  items = items.filter(i => (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase())
     if (tipo === 'novo')      items = items.filter(i => i.isNovo === true)
     if (tipo === 'reposicao') items = items.filter(i => i.isNovo === false)
     if (rf === 'ruptura')     items = items.filter(i => i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0)
@@ -1395,11 +1433,220 @@ app.get('/api/assistencias/geral', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ─── Financeiro (contas a receber) ──────────────────────────────────────────────
+const FIN_TTL       = 30 * 60 * 1000
+const FIN_PAGE_SIZE = 5000     // teto por resposta do endpoint
+const FIN_MAX_PAGES = 60       // trava de segurança
+
+// Enxuga cada conta para só os campos usados no build — evita reter ~190MB de JSON cru
+function slimVendedores(V) {
+  return (Array.isArray(V) ? V : []).map(v => ({
+    Vendedor: v.Vendedor, NVendedor: v.NVendedor,
+    ContasAReceber: (v.ContasAReceber || []).map(c => ({
+      Numero: c.Numero, Prefixo: c.Prefixo, Emissao: c.Emissao, Historico: c.Historico,
+      Nome: c.Nome, Cliente: c.Cliente,
+      Parcelas: (c.Parcelas || []).map(p => ({
+        ValorPago: p.ValorPago, SaldoAberto: p.SaldoAberto,
+        Vencimento: p.Vencimento, VencimentoReal: p.VencimentoReal,
+      })),
+      Pagamentos: (c.Pagamentos || []).map(p => ({
+        Tipo: p.Tipo, FormaPagamento: p.FormaPagamento,
+        Numerario: p.Numerario, ValorPagoReais: p.ValorPagoReais,
+      })),
+    })),
+  }))
+}
+
+const FIN_BATCH = 6   // páginas baixadas em paralelo por lote
+
+async function fetchFinPage(cfg, page) {
+  const r = await axios.get(
+    `${cfg.finBase}/financeiro/conta/receber?limit=${FIN_PAGE_SIZE}&page=${page}`,
+    { headers: { Token: cfg.finToken }, httpsAgent, timeout: 180000, decompress: true }
+  )
+  return r.data
+}
+
+// O endpoint é PAGINADO (?page=): a página 1 traz só "Sem Vendedor"; os vendedores
+// reais estão nas páginas seguintes. Percorro TODAS (em lotes paralelos) e junto os
+// Vendedores. Fim da paginação = página com 5xx (fora do range) ou 0 contas.
+// (Páginas parciais no meio — ex.: pág 2 = 4504 — NÃO indicam fim.)
+async function fetchFinanceiroAllPages(cfg) {
+  let vendedores = [], pagGeral = null, total = 0, done = false
+
+  // 1ª página isolada: se falhar (ex.: 403 token) o erro deve propagar
+  const first = await fetchFinPage(cfg, 1)
+  if (Array.isArray(first?.PagamentoGeral)) pagGeral = first.PagamentoGeral
+  {
+    const V = Array.isArray(first?.Vendedores) ? first.Vendedores : []
+    let c = 0; for (const v of V) c += (v.ContasAReceber || []).length
+    if (c === 0) return { PagamentoGeral: pagGeral || [], Vendedores: [] }
+    vendedores = vendedores.concat(slimVendedores(V)); total += c
+    console.log(`[fin] página 1: ${c} contas (acum ${total})`)
+  }
+
+  let next = 2
+  while (!done && next <= FIN_MAX_PAGES) {
+    const pages = []
+    for (let p = next; p < next + FIN_BATCH && p <= FIN_MAX_PAGES; p++) pages.push(p)
+    const results = await Promise.all(pages.map(p =>
+      fetchFinPage(cfg, p).then(d => ({ p, d })).catch(e => ({ p, err: e }))
+    ))
+    for (const { p, d, err } of results) {
+      if (err) {
+        const st = err.response?.status
+        if (st && st >= 400) { done = true }           // fora do range → fim
+        else console.warn(`[fin] página ${p} falhou (rede): ${err.message}`)
+        continue
+      }
+      const V = Array.isArray(d?.Vendedores) ? d.Vendedores : []
+      let c = 0; for (const v of V) c += (v.ContasAReceber || []).length
+      if (c === 0) { done = true; continue }
+      vendedores = vendedores.concat(slimVendedores(V)); total += c
+      console.log(`[fin] página ${p}: ${c} contas (acum ${total})`)
+    }
+    next += FIN_BATCH
+  }
+  return { PagamentoGeral: pagGeral || [], Vendedores: vendedores }
+}
+
+async function fetchFinanceiro(emp = 'alinare') {
+  const st = S(emp), cfg = EMPRESAS[empValida(emp)]
+  const fresh = st.finCache && Date.now() - st.finCacheAt < FIN_TTL
+  if (fresh) return st.finCache
+  // dispara atualização (deduplicada) em segundo plano
+  if (!st.finFetching) {
+    st.finFetching = (async () => {
+      try {
+        const data = await fetchFinanceiroAllPages(cfg)
+        st.finCache = data
+        st.finCacheAt = Date.now()
+        return data
+      } finally { st.finFetching = null }
+    })()
+    st.finFetching.catch(() => {})       // evita unhandledRejection quando servimos stale
+  }
+  // serve cache velho enquanto atualiza; só bloqueia se não houver nada em cache
+  if (st.finCache) return st.finCache
+  return st.finFetching
+}
+
+const brToInt = s => { const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? +(m[3] + m[2] + m[1]) : null }
+
+function buildFinanceiro(fin, filtros = {}) {
+  const vendedoresRaw = Array.isArray(fin?.Vendedores) ? fin.Vendedores : []
+  const pagGeral      = Array.isArray(fin?.PagamentoGeral) ? fin.PagamentoGeral : []
+
+  const situacao = filtros.situacao || 'todas'          // pago | aberto | todas
+  const vencidas = filtros.vencidas === 'true' || filtros.vencidas === true
+  const deInt    = filtros.de  ? +String(filtros.de).replace(/-/g, '')  : null   // aaaa-mm-dd
+  const ateInt   = filtros.ate ? +String(filtros.ate).replace(/-/g, '') : null
+  const cliQ     = (filtros.cliente || '').trim().toLowerCase()
+  const modQ     = (filtros.modalidade || '').trim().toLowerCase()
+  const hoje     = new Date(); const hojeInt = hoje.getFullYear() * 10000 + (hoje.getMonth() + 1) * 100 + hoje.getDate()
+
+  // Hierarquia: VENDEDOR → CLIENTE → CONTAS (filtros aplicados no nível da conta)
+  const mapaV = {}
+  for (const v of vendedoresRaw) {
+    const vk = v.Vendedor || v.NVendedor || '—'
+    for (const c of (v.ContasAReceber || [])) {
+      let cPago = 0, cPend = 0, venc = ''
+      for (const p of (c.Parcelas || [])) {
+        cPago += Number(p.ValorPago) || 0
+        const saldo = Number(p.SaldoAberto) || 0
+        if (saldo > 0) { cPend += saldo; if (!venc) venc = p.VencimentoReal || p.Vencimento || '' }
+      }
+      const aberto = cPend > 0
+      const formas = {}
+      for (const pg of (c.Pagamentos || [])) {
+        if ((pg.Tipo || '') !== 'Entrada') continue
+        const forma = (pg.FormaPagamento || pg.Numerario || '—').trim()
+        formas[forma] = (formas[forma] || 0) + (Number(pg.ValorPagoReais) || 0)
+      }
+
+      // ── filtros ──
+      if (situacao === 'aberto' && !aberto) continue
+      if (situacao === 'pago'   &&  aberto) continue
+      const emiInt = brToInt(c.Emissao)
+      if (deInt  && (!emiInt || emiInt < deInt))  continue
+      if (ateInt && (!emiInt || emiInt > ateInt)) continue
+      if (vencidas) { const vInt = brToInt(venc); if (!(aberto && vInt && vInt < hojeInt)) continue }
+      if (cliQ && !((c.Nome || '').toLowerCase().includes(cliQ) || (c.Cliente || '').toLowerCase().includes(cliQ))) continue
+      if (modQ && !Object.keys(formas).some(f => f.toLowerCase() === modQ)) continue
+
+      // Na visão "vencidas" só interessa o valor vencido a receber — zera o Concluído
+      const pagoEf = vencidas ? 0 : cPago
+      if (!mapaV[vk]) mapaV[vk] = { nome: v.NVendedor || v.Vendedor || '—', codigo: v.Vendedor || '', cli: {}, mod: {} }
+      const cliMap = mapaV[vk].cli
+      const key = c.Cliente || c.Nome || '—'
+      if (!cliMap[key]) cliMap[key] = { nome: c.Nome || key, codigo: c.Cliente || '', pago: 0, pend: 0, mod: {}, contas: [] }
+      cliMap[key].pago += pagoEf
+      cliMap[key].pend += cPend
+      cliMap[key].contas.push({
+        numero: c.Numero || '', prefixo: c.Prefixo || '', emissao: c.Emissao || '',
+        historico: c.Historico || '', vencimento: venc,
+        pago: pagoEf, pend: cPend, total: pagoEf + cPend, aberto,
+      })
+      if (!vencidas) for (const [forma, val] of Object.entries(formas)) {
+        cliMap[key].mod[forma]  = (cliMap[key].mod[forma]  || 0) + val
+        mapaV[vk].mod[forma]    = (mapaV[vk].mod[forma]    || 0) + val   // agregado do vendedor
+      }
+    }
+  }
+
+  let totPago = 0, totPend = 0
+  const vendedores = Object.values(mapaV).map(v => {
+    let vp = 0, vpe = 0
+    const clientes = Object.values(v.cli).map(c => {
+      const total = c.pago + c.pend
+      const modalidades = Object.entries(c.mod).filter(([, x]) => x > 0)
+        .map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
+      const { mod, ...rest } = c
+      vp += c.pago; vpe += c.pend
+      return { ...rest, total, pctPend: total > 0 ? (c.pend / total) * 100 : 0, modalidades }
+    }).sort((a, b) => b.total - a.total)
+    const vtotal = vp + vpe
+    totPago += vp; totPend += vpe
+    const modalidades = Object.entries(v.mod).filter(([, x]) => x > 0)
+      .map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
+    return { nome: v.nome, codigo: v.codigo, pago: vp, pend: vpe, total: vtotal, pctPend: vtotal > 0 ? (vpe / vtotal) * 100 : 0, clientesCount: clientes.length, modalidades, clientes }
+  }).sort((a, b) => b.total - a.total)
+  const totGeral = totPago + totPend
+
+  // Modalidade de pagamento (só valores pagos > 0)
+  const modTotal = pagGeral.reduce((s, p) => s + (Number(p.ValorPago) || 0), 0)
+  const modalidade = pagGeral
+    .filter(p => (Number(p.ValorPago) || 0) > 0)
+    .map(p => ({ forma: p.FormaPagamento || p.Numerario || '—', valor: Number(p.ValorPago) || 0, pct: modTotal > 0 ? (Number(p.ValorPago) / modTotal) * 100 : 0 }))
+    .sort((a, b) => b.valor - a.valor)
+
+  return {
+    updatedAt: new Date().toISOString(),
+    cards: { concluido: totPago, pendente: totPend, total: totGeral, pctPend: totGeral > 0 ? (totPend / totGeral) * 100 : 0 },
+    vendedores,
+    modalidade,
+    modalidadeTotal: modTotal,
+  }
+}
+
+app.get('/api/financeiro', async (req, res) => {
+  try {
+    const emp = empValida(req.query.empresa)
+    const fin = await fetchFinanceiro(emp)
+    const { de, ate, situacao, vencidas, cliente, modalidade } = req.query
+    res.json(buildFinanceiro(fin, { de, ate, situacao, vencidas, cliente, modalidade }))
+  } catch (e) {
+    const status = e.response?.status
+    res.status(200).json({ erro: status === 403 ? 'Acesso negado ao financeiro desta empresa (token).' : e.message, cards: {}, vendedores: [], modalidade: [] })
+  }
+})
+
 // ─── Alertas de ruptura ───────────────────────────────────────────────────────
 app.get('/api/alertas', async (req, res) => {
   try {
-    if (!warmState.done) return res.json({ loading: true, ruptura: [], risco: [] })
-    const [all, pedItens] = await Promise.all([getProdutos(), buildPedidosItens()])
+    const emp = empValida(req.query.empresa)
+    if (!S(emp).warmState.done) return res.json({ loading: true, ruptura: [], risco: [] })
+    const [all, pedItens] = await Promise.all([getProdutos(emp), buildPedidosItens(emp)])
 
     // mapa produto → saldo pendente em pedidos de compra
     const pedSaldo = {}

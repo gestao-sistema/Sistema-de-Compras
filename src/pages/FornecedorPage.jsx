@@ -279,7 +279,7 @@ function ResumoTab({ fornecedores, expanded, toggle, sortBy, prodFiltros }) {
 }
 
 // ─── Top 5 do fornecedor (ordem segue sortBy) ────────────────────────────────
-const TOP5_LABEL = { lucro: 'Top 7 Maior Lucro', margem: 'Top 7 Maior Margem', vendidas: 'Top 7 Mais Vendidos' }
+const TOP5_LABEL = { lucro: 'Maior Lucro', margem: 'Maior Margem', vendidas: 'Mais Vendidos' }
 const TOP5_SORT  = {
   lucro:    (a, b) => b.lucro    - a.lucro,
   margem:   (a, b) => b.margem   - a.margem,
@@ -287,7 +287,7 @@ const TOP5_SORT  = {
 }
 
 function Top7Vendidos({ produtos, sortBy = 'vendidas', globalLabel = false }) {
-  const limit = globalLabel ? 12 : 6
+  const limit = globalLabel ? 5 : 6
   const top7 = [...produtos]
     .filter(p => (p.vendida > 0 || p.lucro > 0) && p.custo > 0)
     .sort(TOP5_SORT[sortBy] || TOP5_SORT.vendidas)
@@ -299,7 +299,7 @@ function Top7Vendidos({ produtos, sortBy = 'vendidas', globalLabel = false }) {
     <div style={{ background: 'var(--bg-card2)', borderBottom: '2px solid #f5c51830', padding: '12px 20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: '#f5c518', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          ★ {globalLabel ? `🌐 Geral — Top 12 ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}` : `Top 6 ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}`}
+          ★ {globalLabel ? `🌐 Geral — Top 5 ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}` : `Top 6 ${TOP5_LABEL[sortBy] || TOP5_LABEL.vendidas}`}
         </span>
         <div style={{ flex: 1, height: 1, background: '#f5c51830' }} />
       </div>
@@ -341,11 +341,12 @@ function Top7Vendidos({ produtos, sortBy = 'vendidas', globalLabel = false }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                 <Metric label="QTD. Vend."     value={fNum(p.vendida)}             color="#f5c518" bold />
                 <Metric label="Estoque Total"  value={fNum(p.saldo)}               color="#f5c518" />
-                <Metric label="Receita"   value={fBRL(p.vendaReal)}           color="#a3e635" />
-                <Metric label="Lucro"     value={fBRL(p.lucro)}               color="#818cf8" />
-                <Metric label="Margem"    value={`${p.margem.toFixed(1)}%`}   color={mgColor} />
-                <Metric label="Custo"     value={fBRL(p.custo)}              color="#f87171" />
-                <Metric label="Markup"    value={fMarkup(p.custo, p.preco)} color={mkColor(p.custo, p.preco)} />
+                <Metric label="Receita"        value={fBRL(p.vendaReal)}           color="#a3e635" />
+                <Metric label="Lucro"          value={fBRL(p.lucro)}               color="#818cf8" />
+                <Metric label="Valor Un Venda" value={fBRL(p.preco)}               color="#00b4d8" />
+                <Metric label="Custo"          value={fBRL(p.custo)}               color="#f87171" />
+                <Metric label="Markup"         value={fMarkup(p.custo, p.preco)}   color={mkColor(p.custo, p.preco)} />
+                <Metric label="Margem"         value={`${p.margem.toFixed(1)}%`}   color={mgColor} />
               </div>
             </div>
           )

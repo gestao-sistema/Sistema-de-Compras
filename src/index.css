@@ -69,14 +69,14 @@
     transition: background 0.25s, border-color 0.25s;
   }
   .sidebar-logo {
-    @apply flex flex-col items-center px-4 py-5;
+    @apply flex flex-col items-center px-3 py-3;
     background: var(--bg-card2);
     border-bottom: 1px solid var(--border);
     transition: background 0.25s;
   }
   .nav-item {
     @apply flex items-center gap-3 px-5 py-2.5 text-sm font-medium rounded-none transition-all;
-    color: var(--text-nav);
+    color: var(--accent-nav, var(--text-nav));
   }
   .nav-item:hover { background: var(--bg-hover); color: var(--text); }
   .nav-item.active { background: var(--accent); color: var(--accent-text); font-weight: 700; }
@@ -132,10 +132,10 @@
   .tbl tbody td.num { @apply text-right font-mono; color: var(--text); }
   .tbl-clickable { @apply cursor-pointer; }
 
-  /* Títulos em dourado: rótulos de cards (kpi-label) e cabeçalhos de tabela */
-  .kpi-label { color: var(--accent); }
-  .tbl thead th, .tbl thead th span { color: var(--accent) !important; }
-  .tbl thead th:hover { color: var(--accent) !important; }
+  /* Títulos na cor da empresa (tom legível): rótulos de cards e cabeçalhos de tabela */
+  .kpi-label { color: var(--accent-title, var(--accent)); }
+  .tbl thead th, .tbl thead th span { color: var(--accent-title, var(--accent)) !important; }
+  .tbl thead th:hover { color: var(--accent-title, var(--accent)) !important; }
 
   /* Variante compacta: cabe tudo numa página só, sem rolagem horizontal */
   .tbl-compact { table-layout: fixed; }

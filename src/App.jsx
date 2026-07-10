@@ -1,22 +1,24 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { CompanyProvider } from './contexts/CompanyContext'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import SugestoesPage from './pages/SugestoesPage'
 import ComprasPage from './pages/ComprasPage'
-import ClientesPage from './pages/ClientesPage'
+import FinanceiroPage from './pages/FinanceiroPage'
 import AssistenciasPage from './pages/AssistenciasPage'
 import PedidosPage from './pages/PedidosPage'
 import FornecedorPage from './pages/FornecedorPage'
 import AdminPage from './pages/AdminPage'
 import LoginPage from './pages/LoginPage'
 
-function PrivateRoute({ children, chave }) {
-  const { session, profile, podeVer, loading } = useAuth()
+function PrivateRoute({ children, chave, soFinanceiro }) {
+  const { session, profile, podeVer, podeFinanceiro, loading } = useAuth()
   if (loading || (session && !profile)) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'#6b7280', fontSize:13 }}>Carregando…</div>
   if (!session) return <Navigate to="/login" replace />
   if (!profile.ativo) return <Navigate to="/login" replace />
+  if (soFinanceiro && !podeFinanceiro) return <Navigate to="/" replace />
   if (chave && !podeVer(chave)) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:8 }}>
       <div style={{ fontSize:32 }}>🔒</div>
@@ -37,7 +39,7 @@ function AppRoutes() {
         <Route path="compras"      element={<PrivateRoute chave="compras"><ComprasPage /></PrivateRoute>} />
         <Route path="pedidos"      element={<PrivateRoute chave="pedidos"><PedidosPage /></PrivateRoute>} />
         <Route path="fornecedores" element={<PrivateRoute chave="fornecedores"><FornecedorPage /></PrivateRoute>} />
-        <Route path="clientes"     element={<PrivateRoute chave="clientes"><ClientesPage /></PrivateRoute>} />
+        <Route path="financeiro"   element={<PrivateRoute chave="clientes" soFinanceiro><FinanceiroPage /></PrivateRoute>} />
         <Route path="assistencias" element={<PrivateRoute chave="assistencias"><AssistenciasPage /></PrivateRoute>} />
         <Route path="admin"        element={<PrivateRoute><AdminPage /></PrivateRoute>} />
         <Route path="*"            element={<Navigate to="/" replace />} />
@@ -50,7 +52,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppRoutes />
+        <CompanyProvider>
+          <AppRoutes />
+        </CompanyProvider>
       </AuthProvider>
     </ThemeProvider>
   )

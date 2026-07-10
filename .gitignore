@@ -3,6 +3,7 @@ dist/
 .env
 .claude/
 backend/cache_compras.json
+backend/cache_novitah.json
 debug-profiles.mjs
 setup-usuarios.mjs
 shots.js

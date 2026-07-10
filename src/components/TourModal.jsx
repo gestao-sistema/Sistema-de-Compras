@@ -7,7 +7,7 @@ const PASSOS = [
   {
     emoji: '👋',
     titulo: 'Bem-vindo ao Sistema de Compras',
-    subtitulo: 'Alinare · Gestão Inteligente',
+    subtitulo: 'Allinare · Gestão Inteligente',
     descricao: 'Este tour vai apresentar cada seção do sistema em poucos minutos. Navegue com os botões abaixo ou pressione as teclas ← →.',
     cor: '#f5c518',
     rota: null,
