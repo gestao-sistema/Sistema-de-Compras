@@ -1540,7 +1540,7 @@ async function fetchFinPage(cfg, page, emp) {
     try {
       const r = await axios.get(
         `${cfg.finBase}/financeiro/conta/receber?limit=${FIN_PAGE_SIZE}&page=${page}`,
-        { headers: { Token: cfg.finToken }, httpsAgent, timeout: 120000, decompress: true }
+        { headers: { Token: cfg.finToken }, httpsAgent, timeout: 300000, decompress: true }   // 5 min: a API às vezes demora minutos
       )
       return r.data
     } catch (e) {
