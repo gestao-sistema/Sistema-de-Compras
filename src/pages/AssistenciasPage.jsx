@@ -12,6 +12,12 @@ function fDataExt(s) {
   return m ? `${m[1]} ${MESES_EXT[+m[2] - 1]} ${m[3]}` : (s || '')
 }
 
+// "dd/mm/yyyy…" → "yyyy-mm-dd" (para comparar com <input type=date>)
+function toISO(s) {
+  const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
+}
+
 const UNID = '#f5c518'  // quantidade (amarelo)
 // Identidade de cor por coluna
 const PROD = '#38bdf8'  // Produto  → azul
@@ -31,8 +37,11 @@ export default function AssistenciasPage() {
   const [fornecedorF, setFornecedorF] = useState([])
   const [servicoF,    setServicoF]    = useState([])
   const [statusF,     setStatusF]     = useState([])
+  const [operacaoF,   setOperacaoF]   = useState([])
   const [osClienteF,  setOsClienteF]  = useState('')
   const [osFornF,     setOsFornF]     = useState('')
+  const [dataIni,     setDataIni]     = useState('')
+  const [dataFim,     setDataFim]     = useState('')
 
   const q = useQuery({
     queryKey: ['assistencias-geral', status],
@@ -45,15 +54,16 @@ export default function AssistenciasPage() {
   const rows  = data.rows || []
 
   const opcoes = useMemo(() => {
-    const cli = new Set(), forn = new Set(), serv = new Set(), st = new Set()
+    const cli = new Set(), forn = new Set(), serv = new Set(), st = new Set(), op = new Set()
     rows.forEach(r => {
       if (r.clienteNome)   cli.add(r.clienteNome)
       if (r.fornecedor)    forn.add(r.fornecedor)
       if (r.servicoDesc)   serv.add(r.servicoDesc)
       if (r.statusProduto) st.add(r.statusProduto)
+      if (r.operacao)      op.add(r.operacao)
     })
     const ord = arr => [...arr].sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    return { clientes: ord(cli), fornecedores: ord(forn), servicos: ord(serv), statuses: ord(st) }
+    return { clientes: ord(cli), fornecedores: ord(forn), servicos: ord(serv), statuses: ord(st), operacoes: ord(op) }
   }, [rows])
 
   const filtradas = useMemo(() => {
@@ -74,6 +84,7 @@ export default function AssistenciasPage() {
       if (fornecedorF.length && !fornecedorF.includes(r.fornecedor))   return false
       if (servicoF.length    && !servicoF.includes(r.servicoDesc))     return false
       if (statusF.length     && !statusF.includes(r.statusProduto))    return false
+      if (operacaoF.length   && !operacaoF.includes(r.operacao))       return false
       if (osC && !(
         (r.osCliente || '').toLowerCase().includes(osC) ||
         (r.cliente   || '').toLowerCase().includes(osC)
@@ -82,6 +93,12 @@ export default function AssistenciasPage() {
         (r.osFornecedor  || '').toLowerCase().includes(osF) ||
         (r.fornecedorCod || '').toLowerCase().includes(osF)
       )) return false
+      if (dataIni || dataFim) {
+        const iso = toISO(r.dataEntrada)
+        if (!iso) return false
+        if (dataIni && iso < dataIni) return false
+        if (dataFim && iso > dataFim) return false
+      }
       return true
     })
 
@@ -95,7 +112,7 @@ export default function AssistenciasPage() {
       return sortD === 'asc' ? cmp : -cmp
     })
     return sorted
-  }, [rows, busca, sortK, sortD, clienteF, fornecedorF, servicoF, statusF, osClienteF, osFornF])
+  }, [rows, busca, sortK, sortD, clienteF, fornecedorF, servicoF, statusF, operacaoF, osClienteF, osFornF, dataIni, dataFim])
 
   // Agrupa em 2 camadas: Fornecedor (topo) → Cliente → Produtos
   const grupos = useMemo(() => {
@@ -153,22 +170,20 @@ export default function AssistenciasPage() {
   const inicio     = pageSafe * pageSize
   const visiveis   = grupos.slice(inicio, inicio + pageSize)
 
-  // Controle de expansão — fornecedores (topo) e clientes (2ª camada)
+  // Controle de expansão — accordion: só um fornecedor e um cliente abertos por vez
   const [expFor, setExpFor] = useState(() => new Set())
   const [expCli, setExpCli] = useState(() => new Set())
-  const toggleFor = key => setExpFor(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
-  const toggleCli = key => setExpCli(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
-  const todosExpandidos = visiveis.length > 0 && visiveis.every(g => expFor.has(g.key))
-  function toggleTodos() {
-    setExpFor(s => {
-      if (todosExpandidos) { const n = new Set(s); visiveis.forEach(g => n.delete(g.key)); return n }
-      const n = new Set(s); visiveis.forEach(g => n.add(g.key)); return n
-    })
+  const toggleFor = key => {
+    setExpFor(s => (s.has(key) ? new Set() : new Set([key])))
+    setExpCli(new Set())  // ao trocar de fornecedor, recolhe os clientes
   }
+  const toggleCli = key => setExpCli(s => (s.has(key) ? new Set() : new Set([key])))
+  const algumAberto = expFor.size > 0 || expCli.size > 0
+  function recolherTudo() { setExpFor(new Set()); setExpCli(new Set()) }
 
   // Volta para a 1ª página quando muda filtro, busca, ordenação ou tamanho de página
   useEffect(() => { setPage(0) },
-    [busca, sortK, sortD, clienteF, fornecedorF, servicoF, statusF, osClienteF, osFornF, pageSize])
+    [busca, sortK, sortD, clienteF, fornecedorF, servicoF, statusF, operacaoF, osClienteF, osFornF, dataIni, dataFim, pageSize])
 
   // Cards recalculados a partir das linhas filtradas (dedup por OSS)
   const cards = useMemo(() => {
@@ -201,10 +216,10 @@ export default function AssistenciasPage() {
     else { setSortK(k); setSortD('desc') }
   }
   function limparFiltros() {
-    setClienteF([]); setFornecedorF([]); setServicoF([]); setStatusF([])
-    setOsClienteF(''); setOsFornF(''); setBusca('')
+    setClienteF([]); setFornecedorF([]); setServicoF([]); setStatusF([]); setOperacaoF([])
+    setOsClienteF(''); setOsFornF(''); setBusca(''); setDataIni(''); setDataFim('')
   }
-  const temFiltro = clienteF.length || fornecedorF.length || servicoF.length || statusF.length || osClienteF || osFornF || busca
+  const temFiltro = clienteF.length || fornecedorF.length || servicoF.length || statusF.length || operacaoF.length || osClienteF || osFornF || busca || dataIni || dataFim
 
   return (
     <div>
@@ -235,6 +250,16 @@ export default function AssistenciasPage() {
             <Campo label="Status">
               <MultiCombo value={statusF} onChange={setStatusF} options={opcoes.statuses} width={150} />
             </Campo>
+            <Campo label="Operação (garantia)">
+              <MultiCombo value={operacaoF} onChange={setOperacaoF} options={opcoes.operacoes} width={170} />
+            </Campo>
+            <Campo label="Data de Entrada">
+              <div className="flex items-center gap-1.5">
+                <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} className="inp text-xs" style={{ width: 140 }} title="De" />
+                <span className="text-xs" style={{ color: 'var(--text-dim)' }}>até</span>
+                <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="inp text-xs" style={{ width: 140 }} title="Até" />
+              </div>
+            </Campo>
             <Campo label="OS / Cód. Cliente">
               <input value={osClienteF} onChange={e => setOsClienteF(e.target.value)} placeholder="nº OS ou código" className="inp text-xs" style={{ width: 150 }} />
             </Campo>
@@ -262,9 +287,9 @@ export default function AssistenciasPage() {
                   {' · '}{fNum(filtradas.length)} {filtradas.length === 1 ? 'SKU' : 'SKUs'}
                   {grupos.length > 0 && ` — fornecedores ${fNum(inicio + 1)}–${fNum(inicio + visiveis.length)}`}
                 </p>
-                {visiveis.length > 0 && (
-                  <button onClick={toggleTodos} className="btn-ghost text-xs">
-                    {todosExpandidos ? '▾ Recolher todos' : '▸ Expandir todos'}
+                {algumAberto && (
+                  <button onClick={recolherTudo} className="btn-ghost text-xs">
+                    ▾ Recolher tudo
                   </button>
                 )}
               </div>
@@ -543,16 +568,18 @@ function ProdutosTabela({ rows }) {
         <colgroup>
           <col style={{ width: '3%'  }} />{/* Item */}
           <col style={{ width: '6%'  }} />{/* Cod. Assistencia */}
-          <col style={{ width: '21%' }} />{/* SKU */}
-          <col style={{ width: '13%' }} />{/* Servico */}
+          <col style={{ width: '15%' }} />{/* SKU */}
+          <col style={{ width: '10%' }} />{/* Servico */}
           <col style={{ width: '4%'  }} />{/* Qtd */}
           <col style={{ width: '8%'  }} />{/* Valor Produto */}
+          <col style={{ width: '5%'  }} />{/* Peso */}
           <col style={{ width: '8%'  }} />{/* Valor Servico */}
+          <col style={{ width: '8%'  }} />{/* Total Servico */}
           <col style={{ width: '9%'  }} />{/* Operacao */}
-          <col style={{ width: '7%'  }} />{/* Data Entrada */}
-          <col style={{ width: '7%'  }} />{/* Data Encerrada */}
+          <col style={{ width: '6%'  }} />{/* Data Entrada */}
+          <col style={{ width: '6%'  }} />{/* Data Encerrada */}
           <col style={{ width: '5%'  }} />{/* Dias Aberto */}
-          <col style={{ width: '9%'  }} />{/* Status */}
+          <col style={{ width: '7%'  }} />{/* Status */}
         </colgroup>
         <thead>
           <tr>
@@ -562,7 +589,9 @@ function ProdutosTabela({ rows }) {
             <SubTH label="Serviço" />
             <SubTH label="Qtd" align="center" />
             <SubTH label="Valor Produto" align="right" />
+            <SubTH label="Peso" align="right" />
             <SubTH label="Valor Serviço" align="right" />
+            <SubTH label="Total Serviço" align="right" />
             <SubTH label="Operação" align="center" />
             <SubTH label="Dt Entrada" align="center" />
             <SubTH label="Dt Encerrada" align="center" />
@@ -602,8 +631,14 @@ function ProdutosTabela({ rows }) {
                 <td style={{ textAlign: 'right', color: '#38bdf8', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.valorProduto > 0 ? fBRL2(r.valorProduto) : '-'}
                 </td>
+                <td style={{ textAlign: 'right', color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                  {r.peso > 0 ? `${fNum(r.peso, 2)} g` : '-'}
+                </td>
                 <td style={{ textAlign: 'right', color: '#fb923c', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.valor > 0 ? fBRL2(r.valor) : '-'}
+                </td>
+                <td style={{ textAlign: 'right', color: '#a3e635', fontWeight: 800, fontFamily: 'monospace', fontSize: 11.5 }}>
+                  {r.valorTotal > 0 ? fBRL2(r.valorTotal) : '-'}
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   <span className="badge" style={{ background: gc.bg, color: gc.fg, fontSize: 10.5 }} title={r.operacao}>
