@@ -188,24 +188,24 @@ export default function AssistenciasPage() {
   // Cards recalculados a partir das linhas filtradas (dedup por OSS)
   const cards = useMemo(() => {
     const oss = new Map()  // cliente|osCliente -> { aberta, temForn, dias }
+    const ossSemForn = new Set()  // OSs sem fornecedor (mesma definição do grupo "(sem fornecedor)")
     let totalSku = 0, valorAberto = 0, valorFechado = 0
     for (const r of filtradas) {
       totalSku++
       const key = `${r.cliente}|${r.osCliente}`
       if (!oss.has(key)) oss.set(key, { aberta: r.aberta, temForn: r.temForn, dias: r.diasEmAberto })
+      if (!r.fornecedor) ossSemForn.add(r.codigoAssistencia || key)
       if (r.aberta) valorAberto += r.valorTotal || 0
       else          valorFechado += r.valorTotal || 0
     }
-    let ossEncerradas = 0, ossSolicitada = 0, ossFornecedores = 0, slaSoma = 0, slaBase = 0
+    let ossEncerradas = 0, slaSoma = 0, slaBase = 0
     for (const o of oss.values()) {
-      if (!o.aberta)          ossEncerradas++       // tem data de encerramento
-      else if (!o.temForn)    ossSolicitada++       // aberta e sem OSS de fornecedor
-      else                    ossFornecedores++     // aberta, com fornecedor, sem retorno
+      if (!o.aberta) ossEncerradas++       // tem data de encerramento
       // SLA = média de dias em aberto de todas as OSS (aberta = até hoje; encerrada = até o retorno)
       if (o.dias != null) { slaSoma += o.dias; slaBase++ }
     }
     return {
-      totalOss: oss.size, ossEncerradas, ossSolicitada, ossFornecedores, totalSku,
+      totalOss: oss.size, ossEncerradas, ossSemForn: ossSemForn.size, totalSku,
       slaMedio: slaBase ? Math.round(slaSoma / slaBase) : 0, slaBase,
       valorAberto, valorFechado, valorTotal: valorAberto + valorFechado,
     }
@@ -228,7 +228,7 @@ export default function AssistenciasPage() {
         <div className="grid gap-3 titulos-dourados" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
           <KPICard label="Total OS"         value={fNum(cards.totalOss)}        sub="todas as OSs"                    color="cyan"   icon="◎" />
           <KPICard label="OS Encerradas"    value={fNum(cards.ossEncerradas)}   sub="com data de encerramento"        color="green"  icon="✓" />
-          <KPICard label="OS sem Fornecedor" value={fNum(cards.ossSolicitada)}  sub="não direcionadas a fornecedor"   color="orange" icon="◷" />
+          <KPICard label="OS sem Fornecedor" value={fNum(cards.ossSemForn)}     sub="produto sem fornecedor no serviço" color="orange" icon="◷" />
           <KPICard label="Total SKU"        value={fNum(cards.totalSku)}        sub="itens de produto"                color="purple" icon="◈" />
           <KPICard label="SLA"              value={`${fNum(cards.slaMedio)} d`}  sub="média de dias em aberto"         color="yellow" icon="⏱" />
           <CardValores cards={cards} />
