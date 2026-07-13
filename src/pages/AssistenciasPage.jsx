@@ -97,11 +97,74 @@ export default function AssistenciasPage() {
     return sorted
   }, [rows, busca, sortK, sortD, clienteF, fornecedorF, servicoF, statusF, osClienteF, osFornF])
 
-  // Ordenação já roda sobre TODAS as linhas filtradas (acima); aqui só fatiamos a página
-  const totalPages = Math.max(1, Math.ceil(filtradas.length / pageSize))
+  // Agrupa em 2 camadas: Fornecedor (topo) → Cliente → Produtos
+  const grupos = useMemo(() => {
+    const fMap = new Map()
+    for (const r of filtradas) {
+      const fKey = r.fornecedor || '(sem fornecedor)'
+      if (!fMap.has(fKey)) {
+        fMap.set(fKey, {
+          key: fKey, fornecedor: fKey, nProdutos: 0,
+          valorProduto: 0, valorServico: 0, oss: new Map(), clientesMap: new Map(),
+        })
+      }
+      const fg = fMap.get(fKey)
+      fg.nProdutos++
+      fg.valorProduto += r.valorProduto || 0
+      fg.valorServico += r.valorTotal || 0
+      if (r.codigoAssistencia && !fg.oss.has(r.codigoAssistencia)) fg.oss.set(r.codigoAssistencia, r.diasEmAberto)
+
+      const cKey = `${r.cliente}||${r.clienteNome}`
+      if (!fg.clientesMap.has(cKey)) {
+        fg.clientesMap.set(cKey, {
+          key: `${fKey}>>${cKey}`, cliente: r.cliente, clienteNome: r.clienteNome,
+          rows: [], valorProduto: 0, valorServico: 0, oss: new Map(),
+        })
+      }
+      const cg = fg.clientesMap.get(cKey)
+      cg.rows.push(r)
+      cg.valorProduto += r.valorProduto || 0
+      cg.valorServico += r.valorTotal || 0
+      if (r.codigoAssistencia && !cg.oss.has(r.codigoAssistencia)) cg.oss.set(r.codigoAssistencia, r.diasEmAberto)
+    }
+
+    // SLA = média de dias em aberto das OSs (dedup por assistência)
+    const sla = oss => {
+      const dias = [...oss.values()].filter(d => d != null)
+      return dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null
+    }
+    const ordItem = (a, b) =>
+      String(a.codigoAssistencia || '').localeCompare(String(b.codigoAssistencia || ''), 'pt-BR', { numeric: true }) ||
+      String(a.item || '').localeCompare(String(b.item || ''), 'pt-BR', { numeric: true })
+
+    const arr = [...fMap.values()]
+    arr.forEach(fg => {
+      fg.sla = sla(fg.oss)
+      fg.clientes = [...fg.clientesMap.values()]
+      fg.clientes.forEach(cg => { cg.sla = sla(cg.oss); cg.rows.sort(ordItem) })
+      fg.clientes.sort((a, b) => (a.clienteNome || '').localeCompare(b.clienteNome || '', 'pt-BR'))
+    })
+    return arr.sort((a, b) => (a.fornecedor || '').localeCompare(b.fornecedor || '', 'pt-BR'))
+  }, [filtradas])
+
+  // Paginação por fornecedor (camada de topo)
+  const totalPages = Math.max(1, Math.ceil(grupos.length / pageSize))
   const pageSafe   = Math.min(page, totalPages - 1)
   const inicio     = pageSafe * pageSize
-  const visiveis   = filtradas.slice(inicio, inicio + pageSize)
+  const visiveis   = grupos.slice(inicio, inicio + pageSize)
+
+  // Controle de expansão — fornecedores (topo) e clientes (2ª camada)
+  const [expFor, setExpFor] = useState(() => new Set())
+  const [expCli, setExpCli] = useState(() => new Set())
+  const toggleFor = key => setExpFor(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
+  const toggleCli = key => setExpCli(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
+  const todosExpandidos = visiveis.length > 0 && visiveis.every(g => expFor.has(g.key))
+  function toggleTodos() {
+    setExpFor(s => {
+      if (todosExpandidos) { const n = new Set(s); visiveis.forEach(g => n.delete(g.key)); return n }
+      const n = new Set(s); visiveis.forEach(g => n.add(g.key)); return n
+    })
+  }
 
   // Volta para a 1ª página quando muda filtro, busca, ordenação ou tamanho de página
   useEffect(() => { setPage(0) },
@@ -127,7 +190,7 @@ export default function AssistenciasPage() {
       if (o.dias != null) { slaSoma += o.dias; slaBase++ }
     }
     return {
-      ossEncerradas, ossSolicitada, ossFornecedores, totalSku,
+      totalOss: oss.size, ossEncerradas, ossSolicitada, ossFornecedores, totalSku,
       slaMedio: slaBase ? Math.round(slaSoma / slaBase) : 0, slaBase,
       valorAberto, valorFechado, valorTotal: valorAberto + valorFechado,
     }
@@ -148,10 +211,10 @@ export default function AssistenciasPage() {
       <div className="page-body space-y-4">
         {/* Cards */}
         <div className="grid gap-3 titulos-dourados" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+          <KPICard label="Total OS"         value={fNum(cards.totalOss)}        sub="todas as OSs"                    color="cyan"   icon="◎" />
           <KPICard label="OS Encerradas"    value={fNum(cards.ossEncerradas)}   sub="com data de encerramento"        color="green"  icon="✓" />
-          <KPICard label="OS Solicitada"    value={fNum(cards.ossSolicitada)}   sub="sem OS de fornecedor"            color="orange" icon="◷" />
-          <KPICard label="OS Fornecedores"  value={fNum(cards.ossFornecedores)} sub="com fornecedor, sem retorno"     color="purple" icon="◭" />
-          <KPICard label="Total SKU"        value={fNum(cards.totalSku)}        sub="itens de produto"                color="cyan"   icon="◈" />
+          <KPICard label="OS sem Fornecedor" value={fNum(cards.ossSolicitada)}  sub="não direcionadas a fornecedor"   color="orange" icon="◷" />
+          <KPICard label="Total SKU"        value={fNum(cards.totalSku)}        sub="itens de produto"                color="purple" icon="◈" />
           <KPICard label="SLA"              value={`${fNum(cards.slaMedio)} d`}  sub="média de dias em aberto"         color="yellow" icon="⏱" />
           <CardValores cards={cards} />
         </div>
@@ -193,15 +256,23 @@ export default function AssistenciasPage() {
 
           {!q.isLoading && !q.isError && (
             <>
-              <p className="text-xs mb-2" style={{ color: 'var(--text-dim)' }}>
-                {fNum(filtradas.length)} {filtradas.length === 1 ? 'linha' : 'linhas'}
-                {filtradas.length > 0 && ` — ${fNum(inicio + 1)}–${fNum(inicio + visiveis.length)}`}
-              </p>
-              <Tabela rows={visiveis} sortK={sortK} sortD={sortD} onSort={changeSort} statusFiltro={status} />
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <p className="text-xs" style={{ color: 'var(--text-dim)' }}>
+                  {fNum(grupos.length)} {grupos.length === 1 ? 'fornecedor' : 'fornecedores'}
+                  {' · '}{fNum(filtradas.length)} {filtradas.length === 1 ? 'SKU' : 'SKUs'}
+                  {grupos.length > 0 && ` — fornecedores ${fNum(inicio + 1)}–${fNum(inicio + visiveis.length)}`}
+                </p>
+                {visiveis.length > 0 && (
+                  <button onClick={toggleTodos} className="btn-ghost text-xs">
+                    {todosExpandidos ? '▾ Recolher todos' : '▸ Expandir todos'}
+                  </button>
+                )}
+              </div>
+              <Tabela grupos={visiveis} expFor={expFor} expCli={expCli} onToggleFor={toggleFor} onToggleCli={toggleCli} />
 
               <div className="flex items-center justify-between mt-3 flex-wrap gap-3">
                 <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-dim)' }}>
-                  <span>Por página:</span>
+                  <span>Fornecedores por página:</span>
                   {[50, 100, 1000].map(n => (
                     <button key={n} onClick={() => setPageSize(n)}
                       className="px-2.5 py-0.5 rounded font-semibold transition-all"
@@ -361,128 +432,198 @@ function diasColor(d) {
   return 'var(--text)'
 }
 
-function TH({ k, label, align = 'left', sortK, sortD, onSort }) {
-  const active = sortK === k
+// Operação (garantia): destaca se o produto está em garantia ou fora dela
+function garantiaColor(op) {
+  const v = String(op || '').toLowerCase()
+  if (/fora/.test(v))   return { bg: '#7f1d1d', fg: '#fca5a5' }  // Fora da Garantia
+  if (/garant/.test(v)) return { bg: '#14532d', fg: '#4ade80' }  // Em Garantia
+  return { bg: 'var(--bg-input)', fg: 'var(--text-muted)' }
+}
+
+// ─── Tabela: Fornecedor (topo) → Cliente → Produtos ────────────────────────────
+
+function Tabela({ grupos, expFor, expCli, onToggleFor, onToggleCli }) {
   return (
-    <th onClick={() => onSort(k)} title={label}
-      style={{ textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', overflow: 'hidden',
-               textOverflow: 'ellipsis', padding: '8px 6px', fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase',
-               letterSpacing: '0.03em', position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10 }}>
-      <span style={{ color: 'var(--accent)', fontWeight: active ? 800 : 600 }}>{label}{active ? (sortD === 'asc' ? ' ▲' : ' ▼') : ''}</span>
-    </th>
+    <div className="tbl-scroll" style={{ maxHeight: '68vh' }}>
+      {grupos.length === 0 && (
+        <div className="state-box text-sm">Nenhuma assistência encontrada</div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {grupos.map(fg => {
+          const aberto = expFor.has(fg.key)
+          return (
+            <div key={fg.key} style={{ border: '1px solid var(--border2)', borderRadius: 8, overflow: 'hidden' }}>
+              {/* Cabeçalho do fornecedor (1ª camada) */}
+              <button onClick={() => onToggleFor(fg.key)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px',
+                         background: aberto ? 'var(--bg-hover)' : 'var(--bg-input)', border: 'none', cursor: 'pointer',
+                         borderLeft: `3px solid ${FORN}`, textAlign: 'left' }}>
+                <span style={{ color: FORN, fontSize: 13, transition: 'transform .15s',
+                               transform: aberto ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="cut" style={{ color: FORN, fontWeight: 800, fontSize: 13.5 }} title={fg.fornecedor}>
+                    {fg.fornecedor}
+                  </div>
+                  <div style={{ color: FORN, opacity: 0.7, fontSize: 10.5, fontFamily: 'monospace', fontWeight: 600 }}>
+                    {fNum(fg.clientes.length)} {fg.clientes.length === 1 ? 'cliente' : 'clientes'}
+                    {' · '}{fNum(fg.oss.size)} {fg.oss.size === 1 ? 'OS' : 'OSs'}
+                  </div>
+                </div>
+                <ResumoHeader sla={fg.sla} nProdutos={fg.nProdutos} valorServico={fg.valorServico} />
+              </button>
+
+              {/* Clientes do fornecedor (2ª camada) */}
+              {aberto && (
+                <div style={{ padding: '6px 8px 8px', display: 'flex', flexDirection: 'column', gap: 5,
+                              background: 'var(--bg-card)' }}>
+                  {fg.clientes.map(cg => (
+                    <ClienteGrupo key={cg.key} cg={cg} aberto={expCli.has(cg.key)} onToggle={() => onToggleCli(cg.key)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
-function Tabela({ rows, sortK, sortD, onSort, statusFiltro }) {
-  const mostrarEncerramento = statusFiltro !== 'abertas'
-  const nCols = mostrarEncerramento ? 13 : 11
-  const thp = { sortK, sortD, onSort }
-
+// Resumo reutilizável do cabeçalho: SLA · qtd de produtos · total de serviços
+function ResumoHeader({ sla, nProdutos, valorServico }) {
   return (
-    <div className="tbl-scroll" style={{ maxHeight: '62vh', overflowX: 'hidden' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexShrink: 0 }}>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.03em' }}>SLA</div>
+        <div style={{ fontSize: 13, fontWeight: 800, color: diasColor(sla), fontFamily: 'monospace' }}>
+          {sla != null ? `${fNum(sla)} d` : '—'}
+        </div>
+      </div>
+      <span className="badge" style={{ background: 'var(--bg-card)', color: UNID, fontSize: 11, fontWeight: 700 }}>
+        {fNum(nProdutos)} {nProdutos === 1 ? 'SKU' : 'SKUs'}
+      </span>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.03em' }}>Total Serviços</div>
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#a3e635', fontFamily: 'monospace' }}>{fBRL2(valorServico)}</div>
+      </div>
+    </div>
+  )
+}
+
+// Cliente (2ª camada): setinha expande → tabela de produtos
+function ClienteGrupo({ cg, aberto, onToggle }) {
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
+      <button onClick={onToggle}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                 background: aberto ? 'var(--bg-hover)' : 'var(--bg-input)', border: 'none', cursor: 'pointer',
+                 borderLeft: `3px solid ${CLI}`, textAlign: 'left' }}>
+        <span style={{ color: CLI, fontSize: 12, transition: 'transform .15s',
+                       transform: aberto ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="cut" style={{ color: CLI, fontWeight: 700, fontSize: 12.5 }} title={cg.clienteNome}>
+            {cg.clienteNome || '(sem nome)'}
+          </div>
+          <div style={{ color: CLI, opacity: 0.7, fontSize: 10, fontFamily: 'monospace', fontWeight: 600 }}>
+            #{cg.cliente} · {fNum(cg.oss.size)} {cg.oss.size === 1 ? 'OS' : 'OSs'}
+          </div>
+        </div>
+        <ResumoHeader sla={cg.sla} nProdutos={cg.rows.length} valorServico={cg.valorServico} />
+      </button>
+      {aberto && <ProdutosTabela rows={cg.rows} />}
+    </div>
+  )
+}
+
+// Tabela de produtos (3ª camada)
+function ProdutosTabela({ rows }) {
+  return (
+    <div style={{ overflowX: 'auto' }}>
       <table className="tbl tbl-compact" style={{ width: '100%' }}>
         <colgroup>
-          <col style={{ width: '11%' }} />{/* Produto */}
-          <col style={{ width: '11%' }} />{/* Cliente */}
-          <col style={{ width: '9%'  }} />{/* Fornecedor */}
-          <col style={{ width: '9%'  }} />{/* Serviço */}
-          <col style={{ width: '6%'  }} />{/* Status */}
-          <col style={{ width: '8%'  }} />{/* Dt Entrada */}
-          <col style={{ width: '8%'  }} />{/* Dt Encerrada */}
-          <col style={{ width: '6%'  }} />{/* Dias em aberto */}
-          <col style={{ width: '5%'  }} />{/* Durou */}
-          <col style={{ width: '6%'  }} />{/* R$ Unit */}
-          <col style={{ width: '5%'  }} />{/* Peso */}
-          <col style={{ width: '7%'  }} />{/* R$ Serviço */}
-          <col style={{ width: '8%'  }} />{/* R$ Total */}
+          <col style={{ width: '3%'  }} />{/* Item */}
+          <col style={{ width: '6%'  }} />{/* Cod. Assistencia */}
+          <col style={{ width: '21%' }} />{/* SKU */}
+          <col style={{ width: '13%' }} />{/* Servico */}
+          <col style={{ width: '4%'  }} />{/* Qtd */}
+          <col style={{ width: '8%'  }} />{/* Valor Produto */}
+          <col style={{ width: '8%'  }} />{/* Valor Servico */}
+          <col style={{ width: '9%'  }} />{/* Operacao */}
+          <col style={{ width: '7%'  }} />{/* Data Entrada */}
+          <col style={{ width: '7%'  }} />{/* Data Encerrada */}
+          <col style={{ width: '5%'  }} />{/* Dias Aberto */}
+          <col style={{ width: '9%'  }} />{/* Status */}
         </colgroup>
         <thead>
           <tr>
-            <TH k="produto"       label="SKU" {...thp} />
-            <TH k="clienteNome"   label="Cliente" {...thp} />
-            <TH k="fornecedor"    label="Fornecedor" {...thp} />
-            <TH k="servicoDesc"   label="Serviço" {...thp} />
-            <TH k="statusProduto" label="Status" {...thp} />
-            <TH k="dataEntrada"   label="Dt Entr." align="center" {...thp} />
-            {mostrarEncerramento && <TH k="dataEncerramento" label="Dt. Encerr." align="center" {...thp} />}
-            <TH k="diasEmAberto"  label="Dias Ab" align="center" {...thp} />
-            {mostrarEncerramento && <TH k="diasDuracao"      label="Durou" align="center" {...thp} />}
-            <TH k="valorUnit"     label="R$ Unit." align="right" {...thp} />
-            <TH k="peso"          label="Peso" align="right" {...thp} />
-            <TH k="valor"         label="R$ Serviço" align="right" {...thp} />
-            <TH k="valorTotal"    label="R$ Total" align="right" {...thp} />
+            <SubTH label="Item" align="center" />
+            <SubTH label="Cód. Assist." align="center" />
+            <SubTH label="SKU" />
+            <SubTH label="Serviço" />
+            <SubTH label="Qtd" align="center" />
+            <SubTH label="Valor Produto" align="right" />
+            <SubTH label="Valor Serviço" align="right" />
+            <SubTH label="Operação" align="center" />
+            <SubTH label="Dt Entrada" align="center" />
+            <SubTH label="Dt Encerrada" align="center" />
+            <SubTH label="Dias Ab" align="center" />
+            <SubTH label="Status" />
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && (
-            <tr><td colSpan={nCols}><div className="state-box text-sm">Nenhuma OS encontrada</div></td></tr>
-          )}
           {rows.map((r, i) => {
-            const sc = statusColor(r.statusProduto)
+            const gc = garantiaColor(r.operacao)
+            const st = r.ultSituacao || r.statusProduto
+            const sc = statusColor(st)
             return (
               <tr key={i}>
-                {/* PRODUTO */}
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-muted)' }}>
+                  {r.item || '-'}
+                </td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text)', fontWeight: 700 }}>
+                  {r.codigoAssistencia || '-'}
+                </td>
                 <td style={{ borderLeft: `3px solid ${PROD}` }}>
                   <div className="cut" style={{ color: 'var(--text)', fontWeight: 700, fontSize: 12 }} title={r.produto}>
                     {r.produto || '-'}
                   </div>
                   <div className="cut" style={{ fontSize: 10.5, fontFamily: 'monospace' }}>
                     <span style={{ color: PROD, fontWeight: 700 }}>{r.produtoCod}</span>
-                    {r.quantidade > 1 && <span style={{ color: UNID, fontWeight: 700 }}> · {fNum(r.quantidade)} un</span>}
                   </div>
-                </td>
-                {/* CLIENTE */}
-                <td style={{ borderLeft: `3px solid ${CLI}` }}>
-                  <div className="cut" style={{ color: CLI, fontWeight: 700, fontSize: 12 }} title={r.clienteNome}>{r.clienteNome || '-'}</div>
-                  <div className="cut" style={{ color: CLI, opacity: 0.75, fontSize: 10.5, fontFamily: 'monospace', fontWeight: 600 }}>
-                    #{r.cliente} · OS {r.osCliente}
-                  </div>
-                </td>
-                {/* FORNECEDOR */}
-                <td style={{ borderLeft: `3px solid ${FORN}` }}>
-                  <div className="cut" style={{ color: FORN, fontWeight: 700, fontSize: 12 }} title={r.fornecedor}>
-                    {r.fornecedor || '-'}
-                  </div>
-                  {r.osFornecedor && (
-                    <div className="cut" style={{ color: FORN, opacity: 0.75, fontSize: 10.5, fontFamily: 'monospace', fontWeight: 600 }}>OS forn. {r.osFornecedor}</div>
-                  )}
                 </td>
                 <td>
                   <div className="cut" style={{ color: 'var(--text-muted)', fontSize: 12 }} title={r.servicoDesc}>
                     {r.servicoDesc || '-'}
                   </div>
                 </td>
-                <td>
-                  <span className="badge cut" style={{ background: sc.bg, color: sc.fg, fontSize: 10.5, display: 'inline-block', maxWidth: '100%' }} title={r.statusProduto}>
-                    {r.statusProduto || '-'}
-                  </span>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: 11.5, color: UNID }}>
+                  {fNum(r.quantidade)}
                 </td>
-                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5 }}>{r.dataEntrada ? fDataExt(r.dataEntrada) : '-'}</td>
-                {mostrarEncerramento && (
-                  <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: r.dataEncerramento ? '#4ade80' : 'var(--text-dim)' }}>
-                    {r.dataEncerramento ? fDataExt(r.dataEncerramento) : '—'}
-                  </td>
-                )}
-                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: 11.5,
-                             color: r.dataEncerramento ? 'var(--text-muted)' : diasColor(r.diasEmAberto) }}>
-                  {r.diasEmAberto != null ? `${fNum(r.diasEmAberto)} d` : '—'}
-                </td>
-                {mostrarEncerramento && (
-                  <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-muted)' }}>
-                    {r.diasDuracao != null ? `${fNum(r.diasDuracao)} d` : '—'}
-                  </td>
-                )}
-                <td style={{ textAlign: 'right', color: '#fb923c', fontFamily: 'monospace', fontSize: 11.5 }}>
-                  {r.valorUnit > 0 ? fBRL2(r.valorUnit) : '-'}
-                </td>
-                <td style={{ textAlign: 'right', color: '#fb923c', fontFamily: 'monospace', fontSize: 11.5 }}>
-                  {r.peso > 0 ? `${fNum(r.peso, 2)} g` : '-'}
+                <td style={{ textAlign: 'right', color: '#38bdf8', fontFamily: 'monospace', fontSize: 11.5 }}>
+                  {r.valorProduto > 0 ? fBRL2(r.valorProduto) : '-'}
                 </td>
                 <td style={{ textAlign: 'right', color: '#fb923c', fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.valor > 0 ? fBRL2(r.valor) : '-'}
                 </td>
-                <td style={{ textAlign: 'right', color: '#a3e635', fontWeight: 800, fontFamily: 'monospace', fontSize: 11.5 }}>
-                  {r.valorTotal > 0 ? fBRL2(r.valorTotal) : '-'}
+                <td style={{ textAlign: 'center' }}>
+                  <span className="badge" style={{ background: gc.bg, color: gc.fg, fontSize: 10.5 }} title={r.operacao}>
+                    {r.operacao || '-'}
+                  </span>
+                </td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5 }}>
+                  {r.dataEntrada ? fDataExt(r.dataEntrada) : '-'}
+                </td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: r.dataEncerramento ? '#4ade80' : 'var(--text-dim)' }}>
+                  {r.dataEncerramento ? fDataExt(r.dataEncerramento) : '—'}
+                </td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: 11.5,
+                             color: r.dataEncerramento ? 'var(--text-muted)' : diasColor(r.diasEmAberto) }}>
+                  {r.diasEmAberto != null ? `${fNum(r.diasEmAberto)} d` : '—'}
+                </td>
+                <td>
+                  <span className="badge cut" style={{ background: sc.bg, color: sc.fg, fontSize: 10.5, display: 'inline-block', maxWidth: '100%' }} title={st}>
+                    {st || '-'}
+                  </span>
                 </td>
               </tr>
             )
@@ -490,5 +631,15 @@ function Tabela({ rows, sortK, sortD, onSort, statusFiltro }) {
         </tbody>
       </table>
     </div>
+  )
+}
+
+function SubTH({ label, align = 'left' }) {
+  return (
+    <th style={{ textAlign: align, whiteSpace: 'nowrap', padding: '7px 6px', fontSize: 10, fontWeight: 700,
+                 textTransform: 'uppercase', letterSpacing: '0.03em', position: 'sticky', top: 0,
+                 background: 'var(--bg-card)', zIndex: 5, color: 'var(--accent)' }}>
+      {label}
+    </th>
   )
 }
