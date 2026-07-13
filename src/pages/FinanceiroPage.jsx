@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
+import ExportFinanceiro from '../components/ExportFinanceiro'
+import MultiCombo from '../components/MultiCombo'
 
 const fMoeda = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0)
 
@@ -44,27 +46,39 @@ export default function FinanceiroPage() {
   const [ate, setAte]           = useState('')
   const [pagDe, setPagDe]       = useState('')
   const [pagAte, setPagAte]     = useState('')
-  const [situacao, setSituacao] = useState('todas')
+  const [situacaoF, setSituacaoF]     = useState([])   // ['pago','aberto']
   const [vencidas, setVencidas] = useState(false)
-  const [cliente, setCliente]   = useState('')
-  const [modalidade, setModalidade] = useState('')
+  const [clienteF, setClienteF]       = useState([])   // códigos de cliente
+  const [modalidadeF, setModalidadeF] = useState([])   // formas de pagamento
+  const [parcelaF, setParcelaF]       = useState([])   // parcelas
 
   const q = useQuery({
-    queryKey: ['financeiro', de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade],
-    queryFn: () => api.financeiro({ de, ate, pagDe, pagAte, situacao, vencidas: vencidas || undefined, cliente, modalidade }),
+    queryKey: ['financeiro', de, ate, pagDe, pagAte, situacaoF, vencidas, clienteF, modalidadeF, parcelaF],
+    queryFn: () => api.financeiro({
+      de, ate, pagDe, pagAte,
+      situacao:   situacaoF.join('|'),
+      vencidas:   vencidas || undefined,
+      cliente:    clienteF.join('|'),
+      modalidade: modalidadeF.join('|'),
+      parcela:    parcelaF.join('|'),
+    }),
     staleTime: 5 * 60 * 1000,
     placeholderData: keepPreviousData,
     // enquanto o backend ainda monta o cache (1ª carga), repolla a cada 4s
     refetchInterval: query => (query.state.data?.carregando ? 4000 : false),
   })
 
-  const temFiltro = de || ate || pagDe || pagAte || situacao !== 'todas' || vencidas || cliente || modalidade
-  function limpar() { setDe(''); setAte(''); setPagDe(''); setPagAte(''); setSituacao('todas'); setVencidas(false); setCliente(''); setModalidade('') }
+  const temFiltro = de || ate || pagDe || pagAte || situacaoF.length || vencidas || clienteF.length || modalidadeF.length || parcelaF.length
+  function limpar() { setDe(''); setAte(''); setPagDe(''); setPagAte(''); setSituacaoF([]); setVencidas(false); setClienteF([]); setModalidadeF([]); setParcelaF([]) }
 
   const d      = q.data || {}
   const cards  = d.cards || {}
   const linhas = d.vendedores || []
   const modal  = d.modalidade || []
+  const clientesOpc = d.clientes || []
+  const clienteOptions = clientesOpc.map(c => ({ value: c.codigo, label: `${c.nome} · #${c.codigo}` }))
+  const parcelasOpc = d.parcelas || []
+  const SITUACAO_OPTS = [{ value: 'pago', label: 'Pago' }, { value: 'aberto', label: 'Em aberto' }]
 
   return (
     <div>
@@ -87,20 +101,16 @@ export default function FinanceiroPage() {
           <Campo label="Pagamento (de)"><input type="date" value={pagDe} onChange={e => setPagDe(e.target.value)} className="inp text-xs" /></Campo>
           <Campo label="Pagamento (até)"><input type="date" value={pagAte} onChange={e => setPagAte(e.target.value)} className="inp text-xs" /></Campo>
           <Campo label="Situação">
-            <select value={situacao} onChange={e => setSituacao(e.target.value)} className="inp text-xs" style={{ minWidth: 120 }}>
-              <option value="todas">Todas</option>
-              <option value="pago">Pago</option>
-              <option value="aberto">Em aberto</option>
-            </select>
+            <MultiCombo value={situacaoF} onChange={setSituacaoF} options={SITUACAO_OPTS} width={150} />
           </Campo>
           <Campo label="Modalidade">
-            <select value={modalidade} onChange={e => setModalidade(e.target.value)} className="inp text-xs" style={{ minWidth: 170, maxWidth: 220 }}>
-              <option value="">Todas</option>
-              {modal.map(m => <option key={m.forma} value={m.forma}>{m.forma}</option>)}
-            </select>
+            <MultiCombo value={modalidadeF} onChange={setModalidadeF} options={modal.map(m => m.forma)} width={200} />
+          </Campo>
+          <Campo label="Parcela">
+            <MultiCombo value={parcelaF} onChange={setParcelaF} options={parcelasOpc} width={130} />
           </Campo>
           <Campo label="Cliente">
-            <input value={cliente} onChange={e => setCliente(e.target.value)} placeholder="nome ou código" className="inp text-xs" style={{ width: 180 }} />
+            <MultiCombo value={clienteF} onChange={setClienteF} options={clienteOptions} placeholder="todos os clientes" width={240} />
           </Campo>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', paddingBottom: 6 }}>
             <input type="checkbox" checked={vencidas} onChange={e => setVencidas(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
@@ -112,10 +122,11 @@ export default function FinanceiroPage() {
 
         {/* Tabela por responsável (vendedor → cliente → contas) */}
         <div className="card" style={{ padding: 0, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', marginTop: 12 }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--accent-title, var(--accent))' }}>
               Contas a Receber por Responsável {linhas.length > 0 && `(${fNum(linhas.length)})`}
             </span>
+            {linhas.length > 0 && <ExportFinanceiro vendedores={linhas} cards={cards} />}
           </div>
 
           {q.isLoading || d.carregando ? (
@@ -351,7 +362,7 @@ function ContasCliente({ contas }) {
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: '1px solid var(--border)' }}>
-            {['Documento', 'Emissão', 'Vencimento', 'Histórico', 'Pagamento', 'R$ Valor Devido', 'R$ Valor Recebido', 'R$ Valor Pendente', 'Situação'].map((h, i) => (
+            {['Documento', 'Emissão', 'Vencimento', 'Histórico', 'Pagamento', 'Parcela', 'R$ Valor Devido', 'R$ Valor Recebido', 'R$ Valor Pendente', 'Situação'].map((h, i) => (
               <th key={h} style={{ textAlign: 'center', padding: '6px 8px', fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{h}</th>
             ))}
           </tr>
@@ -364,6 +375,7 @@ function ContasCliente({ contas }) {
               <td style={{ padding: '5px 8px', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', color: c.vencimento ? '#f87171' : 'var(--text-dim)', whiteSpace: 'nowrap' }}>{c.vencimento || '—'}</td>
               <td style={{ padding: '5px 8px', fontSize: 11, textAlign: 'center', color: 'var(--text-sec)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.historico}>{c.historico || '—'}</td>
               <td style={{ padding: '5px 8px', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', color: c.pagamento ? '#4ade80' : 'var(--text-dim)', whiteSpace: 'nowrap' }}>{c.pagamento || '—'}</td>
+              <td style={{ padding: '5px 8px', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{c.parcela || '—'}</td>
               <td style={{ padding: '5px 8px', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', color: '#93c5fd', fontWeight: 700 }}>{fMoeda(c.total)}</td>
               <td style={{ padding: '5px 8px', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', color: '#4ade80' }}>{fMoeda(c.pago)}</td>
               <td style={{ padding: '5px 8px', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', color: '#fb923c' }}>{fMoeda(c.pend)}</td>

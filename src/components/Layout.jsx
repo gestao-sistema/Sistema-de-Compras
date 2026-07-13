@@ -16,7 +16,7 @@ const NAV = [
   { to: '/compras',     label: 'Sugestão de Compra',       Icon: IconCart,      chave: 'compras' },
   { to: '/pedidos',     label: 'Pedidos de Compras',       Icon: IconClipboard, chave: 'pedidos' },
   { to: '/fornecedores',label: 'Fornecedores',             Icon: IconTruck,     chave: 'fornecedores' },
-  { to: '/financeiro',  label: 'Financeiro',               Icon: IconMoney,     chave: 'clientes' },
+  { to: '/financeiro',  label: 'Contas a Receber',         Icon: IconMoney,     chave: 'clientes' },
   { to: '/assistencias',label: 'Assistências',             Icon: IconWrench,    chave: 'assistencias' },
 ]
 
@@ -85,7 +85,7 @@ export default function Layout() {
   const location = useLocation()
   const naFinanceiro = location.pathname.startsWith('/financeiro')
   const atualizadoEm = naFinanceiro ? statusQ.data?.finCacheAt : statusQ.data?.lastRefreshed
-  const contextoLabel = naFinanceiro ? 'Financeiro' : 'Estoque'
+  const contextoLabel = naFinanceiro ? 'Contas a Receber' : 'Estoque'
 
   const isRefreshing = statusQ.data?.done === false
 
@@ -160,7 +160,7 @@ export default function Layout() {
                 </div>
               </>
             ) : naFinanceiro && (
-              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>Financeiro carregando…</div>
+              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>Contas a Receber carregando…</div>
             )}
           </div>
           <button

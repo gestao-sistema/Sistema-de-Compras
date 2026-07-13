@@ -452,6 +452,9 @@ async function refreshLoop() {
   loadFinDisk('alinare'); loadFinDisk('novitah')
   await initialLoad('alinare')              // Alinare do seed → instantâneo
   warmPedidosForn('alinare').catch(() => {})
+  // Assistências (~24 MB) em paralelo já no boot: não espera o refresh de produtos,
+  // então a tela abre rápido em vez de bloquear no 1º acesso frio.
+  warmAssistencias().catch(() => {})
   // Novitah em background para não competir por banda/CPU no boot
   initialLoad('novitah').then(() => warmPedidosForn('novitah')).catch(() => {})
   fetchFinanceiro('novitah').catch(() => {})
@@ -1326,9 +1329,9 @@ app.get('/api/blip/assistencia/itens/:id', async (req, res) => {
 let _assistCache = null, _assistCacheAt = 0, _assistFetching = null
 const ASSIST_TTL = 15 * 60 * 1000
 
-async function fetchAssistenciasGeral() {
-  if (_assistCache && Date.now() - _assistCacheAt < ASSIST_TTL) return _assistCache
-  // Dedup: se já há um download em andamento, todos aguardam o mesmo
+// Dispara o download pesado (~24 MB) e atualiza o cache ao concluir. Dedup: uma
+// única promessa em andamento é compartilhada por todos os chamadores.
+function startAssistFetch() {
   if (_assistFetching) return _assistFetching
   _assistFetching = (async () => {
     try {
@@ -1343,6 +1346,19 @@ async function fetchAssistenciasGeral() {
     }
   })()
   return _assistFetching
+}
+
+async function fetchAssistenciasGeral() {
+  // Cache fresco → resposta instantânea
+  if (_assistCache && Date.now() - _assistCacheAt < ASSIST_TTL) return _assistCache
+  // Cache vencido mas existente → serve o "stale" na hora e atualiza em background
+  // (não bloqueia a resposta nos ~8s do refetch; o próximo hit já pega o novo)
+  if (_assistCache) {
+    startAssistFetch().catch(() => {})
+    return _assistCache
+  }
+  // Primeira carga (sem cache algum) → precisa aguardar o download
+  return startAssistFetch()
 }
 
 // "28/04/2026" ou "28/04/2026 00:00:00" → Date (ou null)
@@ -1521,7 +1537,7 @@ function slimVendedores(V) {
       Numero: c.Numero, Prefixo: c.Prefixo, Emissao: c.Emissao, Historico: c.Historico,
       Nome: c.Nome, Cliente: c.Cliente,
       Parcelas: (c.Parcelas || []).map(p => ({
-        ValorPago: p.ValorPago, SaldoAberto: p.SaldoAberto, ValorTotal: p.ValorTotal,
+        Parcela: p.Parcela, ValorPago: p.ValorPago, SaldoAberto: p.SaldoAberto, ValorTotal: p.ValorTotal,
         Vencimento: p.Vencimento, VencimentoReal: p.VencimentoReal,
       })),
       Pagamentos: (c.Pagamentos || []).map(p => ({
@@ -1657,19 +1673,42 @@ async function fetchFinanceiro(emp = 'alinare', force = false) {
 
 const brToInt = s => { const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? +(m[3] + m[2] + m[1]) : null }
 
+// Parcela(s) de um título: nº quando única, lista quando parcelado (ex. "01/02/03")
+function parcelaDeConta(c) {
+  const nums = []
+  for (const p of (c.Parcelas || [])) if (p.Parcela != null && String(p.Parcela).trim()) nums.push(String(p.Parcela).trim())
+  return [...new Set(nums)].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join('/')
+}
+
 function buildFinanceiro(fin, filtros = {}) {
   const vendedoresRaw = Array.isArray(fin?.Vendedores) ? fin.Vendedores : []
   const pagGeral      = Array.isArray(fin?.PagamentoGeral) ? fin.PagamentoGeral : []
 
-  const situacao = filtros.situacao || 'todas'          // pago | aberto | todas
+  // Multi-seleção: valores separados por "|" (checkbox no front). Vazio = sem filtro.
+  const splitSet = (s, low) => new Set(String(s || '').split('|').map(x => (low ? x.trim().toLowerCase() : x.trim())).filter(Boolean))
+  const sitSet   = splitSet(filtros.situacao)            // 'pago' | 'aberto'
+  const cliSet   = splitSet(filtros.cliente)             // códigos de cliente
+  const modSet   = splitSet(filtros.modalidade, true)    // formas de pagamento (lower)
+  const parcSet  = splitSet(filtros.parcela)             // parcelas (ex. "01", "01/02")
   const vencidas = filtros.vencidas === 'true' || filtros.vencidas === true
   const deInt    = filtros.de  ? +String(filtros.de).replace(/-/g, '')  : null   // aaaa-mm-dd
   const ateInt   = filtros.ate ? +String(filtros.ate).replace(/-/g, '') : null
   const pagDeInt  = filtros.pagDe  ? +String(filtros.pagDe).replace(/-/g, '')  : null
   const pagAteInt = filtros.pagAte ? +String(filtros.pagAte).replace(/-/g, '') : null
-  const cliQ     = (filtros.cliente || '').trim().toLowerCase()
-  const modQ     = (filtros.modalidade || '').trim().toLowerCase()
   const hoje     = new Date(); const hojeInt = hoje.getFullYear() * 10000 + (hoje.getMonth() + 1) * 100 + hoje.getDate()
+
+  // Opções de cliente e de parcela = todo o cache (independe dos filtros ativos)
+  const cliOpcMap = new Map()
+  const parcOpcSet = new Set()
+  for (const v of vendedoresRaw) for (const c of (v.ContasAReceber || [])) {
+    const cod = c.Cliente || ''
+    if (cod && !cliOpcMap.has(cod)) cliOpcMap.set(cod, c.Nome || cod)
+    const pc = parcelaDeConta(c); if (pc) parcOpcSet.add(pc)
+  }
+  const clientesOpcoes = [...cliOpcMap.entries()]
+    .map(([codigo, nome]) => ({ codigo, nome }))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
+  const parcelasOpcoes = [...parcOpcSet].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
 
   // Hierarquia: VENDEDOR → CLIENTE → CONTAS (filtros aplicados no nível da conta)
   const mapaV = {}
@@ -1683,6 +1722,7 @@ function buildFinanceiro(fin, filtros = {}) {
         const saldo = Number(p.SaldoAberto) || 0
         if (saldo > 0) { cPend += saldo; if (!venc) venc = p.VencimentoReal || p.Vencimento || '' }
       }
+      const parcela = parcelaDeConta(c)   // nº quando única, lista quando parcelado
       const aberto = cPend > 0
       const formas = {}
       let pgData = '', pgDataInt = 0                     // última data de pagamento
@@ -1694,9 +1734,8 @@ function buildFinanceiro(fin, filtros = {}) {
         if (di && di >= pgDataInt) { pgDataInt = di; pgData = pg.DataPagamento }
       }
 
-      // ── filtros ──
-      if (situacao === 'aberto' && !aberto) continue
-      if (situacao === 'pago'   &&  aberto) continue
+      // ── filtros (multi-seleção) ──
+      if (sitSet.size && !((aberto && sitSet.has('aberto')) || (!aberto && sitSet.has('pago')))) continue
       const emiInt = brToInt(c.Emissao)
       if (deInt  && (!emiInt || emiInt < deInt))  continue
       if (ateInt && (!emiInt || emiInt > ateInt)) continue
@@ -1704,8 +1743,9 @@ function buildFinanceiro(fin, filtros = {}) {
       if (pagDeInt  && (!pgDataInt || pgDataInt < pagDeInt))  continue
       if (pagAteInt && (!pgDataInt || pgDataInt > pagAteInt)) continue
       if (vencidas) { const vInt = brToInt(venc); if (!(aberto && vInt && vInt < hojeInt)) continue }
-      if (cliQ && !((c.Nome || '').toLowerCase().includes(cliQ) || (c.Cliente || '').toLowerCase().includes(cliQ))) continue
-      if (modQ && !Object.keys(formas).some(f => f.toLowerCase() === modQ)) continue
+      if (cliSet.size && !cliSet.has(c.Cliente)) continue
+      if (modSet.size && !Object.keys(formas).some(f => modSet.has(f.toLowerCase()))) continue
+      if (parcSet.size && !parcSet.has(parcela)) continue
 
       // Na visão "vencidas" só interessa o valor vencido a receber — zera o Concluído
       const pagoEf = vencidas ? 0 : cPago
@@ -1716,9 +1756,13 @@ function buildFinanceiro(fin, filtros = {}) {
       cliMap[key].pago += pagoEf
       cliMap[key].pend += cPend
       cliMap[key].devido += cDevido
+      // Modalidade(s) de pagamento desta conta — forma(s) ordenada(s) por valor
+      const modalidadeConta = Object.entries(formas).filter(([, val]) => val > 0)
+        .sort((a, b) => b[1] - a[1]).map(([f]) => f).join(', ')
       cliMap[key].contas.push({
         numero: c.Numero || '', prefixo: c.Prefixo || '', emissao: c.Emissao || '',
         historico: c.Historico || '', vencimento: venc, pagamento: vencidas ? '' : pgData,
+        modalidade: vencidas ? '' : modalidadeConta, parcela,
         devido: cDevido, pago: pagoEf, pend: cPend, total: pagoEf + cPend, aberto,
       })
       if (!vencidas) for (const [forma, val] of Object.entries(formas)) {
@@ -1760,6 +1804,8 @@ function buildFinanceiro(fin, filtros = {}) {
     vendedores,
     modalidade,
     modalidadeTotal: modTotal,
+    clientes: clientesOpcoes,
+    parcelas: parcelasOpcoes,
   }
 }
 
@@ -1775,8 +1821,8 @@ app.get('/api/financeiro', async (req, res) => {
       // 1ª carga ou instabilidade da API (outage) — frontend fica "carregando" e repolla
       return res.json({ carregando: true, cards: {}, vendedores: [], modalidade: [] })
     }
-    const { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade } = req.query
-    res.json(buildFinanceiro(fin, { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade }))
+    const { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade, parcela } = req.query
+    res.json(buildFinanceiro(fin, { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade, parcela }))
   } catch (e) {
     res.status(200).json({ erro: e.message, cards: {}, vendedores: [], modalidade: [] })
   }
