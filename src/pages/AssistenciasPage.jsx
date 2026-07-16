@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import KPICard from '../components/KPICard'
+import ExportAssistencias from '../components/ExportAssistencias'
 
 const fBRL2 = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0)
 
@@ -10,6 +11,12 @@ const MESES_EXT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set'
 function fDataExt(s) {
   const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/)
   return m ? `${m[1]} ${MESES_EXT[+m[2] - 1]} ${m[3]}` : (s || '')
+}
+
+// Data numérica dd/mm/aaaa (descarta hora, se houver)
+function fDataNum(s) {
+  const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : (s || '')
 }
 
 // "dd/mm/yyyy…" → "yyyy-mm-dd" (para comparar com <input type=date>)
@@ -53,18 +60,56 @@ export default function AssistenciasPage() {
   const data  = q.data || {}
   const rows  = data.rows || []
 
+  // Opções faceteadas: cada filtro lista só o que existe considerando os DEMAIS filtros
+  // ativos (exclui o próprio). Busca, OS e datas sempre restringem (não são dropdowns).
   const opcoes = useMemo(() => {
-    const cli = new Set(), forn = new Set(), serv = new Set(), st = new Set(), op = new Set()
-    rows.forEach(r => {
-      if (r.clienteNome)   cli.add(r.clienteNome)
-      if (r.fornecedor)    forn.add(r.fornecedor)
-      if (r.servicoDesc)   serv.add(r.servicoDesc)
-      if (r.statusProduto) st.add(r.statusProduto)
-      if (r.operacao)      op.add(r.operacao)
-    })
-    const ord = arr => [...arr].sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    return { clientes: ord(cli), fornecedores: ord(forn), servicos: ord(serv), statuses: ord(st), operacoes: ord(op) }
-  }, [rows])
+    const term = busca.trim().toLowerCase()
+    const osC  = osClienteF.trim().toLowerCase()
+    const osF  = osFornF.trim().toLowerCase()
+    const pTerm = r => !term || (
+      (r.clienteNome || '').toLowerCase().includes(term) ||
+      (r.cliente || '').toLowerCase().includes(term) ||
+      (r.produto || '').toLowerCase().includes(term) ||
+      (r.produtoCod || '').toLowerCase().includes(term) ||
+      (r.fornecedor || '').toLowerCase().includes(term) ||
+      (r.osCliente || '').toLowerCase().includes(term))
+    const pOsC  = r => !osC || ((r.osCliente || '').toLowerCase().includes(osC) || (r.cliente || '').toLowerCase().includes(osC))
+    const pOsF  = r => !osF || ((r.osFornecedor || '').toLowerCase().includes(osF) || (r.fornecedorCod || '').toLowerCase().includes(osF))
+    const pData = r => {
+      if (!dataIni && !dataFim) return true
+      const iso = toISO(r.dataEntrada); if (!iso) return false
+      if (dataIni && iso < dataIni) return false
+      if (dataFim && iso > dataFim) return false
+      return true
+    }
+    const pCli  = r => !clienteF.length    || clienteF.includes(r.clienteNome)
+    const pForn = r => !fornecedorF.length || fornecedorF.includes(r.fornecedor)
+    const pServ = r => !servicoF.length    || servicoF.includes(r.servicoDesc)
+    const pStat = r => !statusF.length     || statusF.includes(r.statusOss)
+    const pOp   = r => !operacaoF.length   || operacaoF.includes(r.operacao)
+
+    // coleta valores distintos de `campo`, aplicando todos os predicados menos `excl`
+    const collect = (excl, campo) => {
+      const set = new Set()
+      for (const r of rows) {
+        if (!pTerm(r) || !pOsC(r) || !pOsF(r) || !pData(r)) continue
+        if (excl !== 'cli'  && !pCli(r))  continue
+        if (excl !== 'forn' && !pForn(r)) continue
+        if (excl !== 'serv' && !pServ(r)) continue
+        if (excl !== 'stat' && !pStat(r)) continue
+        if (excl !== 'op'   && !pOp(r))   continue
+        const v = r[campo]; if (v) set.add(v)
+      }
+      return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return {
+      clientes:     collect('cli',  'clienteNome'),
+      fornecedores: collect('forn', 'fornecedor'),
+      servicos:     collect('serv', 'servicoDesc'),
+      situacoes:    collect('stat', 'statusOss'),
+      operacoes:    collect('op',   'operacao'),
+    }
+  }, [rows, busca, osClienteF, osFornF, dataIni, dataFim, clienteF, fornecedorF, servicoF, statusF, operacaoF])
 
   const filtradas = useMemo(() => {
     const term = busca.trim().toLowerCase()
@@ -83,7 +128,7 @@ export default function AssistenciasPage() {
       if (clienteF.length    && !clienteF.includes(r.clienteNome))     return false
       if (fornecedorF.length && !fornecedorF.includes(r.fornecedor))   return false
       if (servicoF.length    && !servicoF.includes(r.servicoDesc))     return false
-      if (statusF.length     && !statusF.includes(r.statusProduto))    return false
+      if (statusF.length     && !statusF.includes(r.statusOss))        return false
       if (operacaoF.length   && !operacaoF.includes(r.operacao))       return false
       if (osC && !(
         (r.osCliente || '').toLowerCase().includes(osC) ||
@@ -247,8 +292,8 @@ export default function AssistenciasPage() {
             <Campo label="Serviço">
               <MultiCombo value={servicoF} onChange={setServicoF} options={opcoes.servicos} width={220} />
             </Campo>
-            <Campo label="Status">
-              <MultiCombo value={statusF} onChange={setStatusF} options={opcoes.statuses} width={150} />
+            <Campo label="Situação da OS">
+              <MultiCombo value={statusF} onChange={setStatusF} options={opcoes.situacoes} width={170} />
             </Campo>
             <Campo label="Operação (garantia)">
               <MultiCombo value={operacaoF} onChange={setOperacaoF} options={opcoes.operacoes} width={170} />
@@ -287,11 +332,12 @@ export default function AssistenciasPage() {
                   {' · '}{fNum(filtradas.length)} {filtradas.length === 1 ? 'SKU' : 'SKUs'}
                   {grupos.length > 0 && ` — fornecedores ${fNum(inicio + 1)}–${fNum(inicio + visiveis.length)}`}
                 </p>
-                {algumAberto && (
-                  <button onClick={recolherTudo} className="btn-ghost text-xs">
-                    ▾ Recolher tudo
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {algumAberto && (
+                    <button onClick={recolherTudo} className="btn-ghost text-xs">▾ Recolher tudo</button>
+                  )}
+                  <ExportAssistencias rows={filtradas} />
+                </div>
               </div>
               <Tabela grupos={visiveis} expFor={expFor} expCli={expCli} onToggleFor={toggleFor} onToggleCli={toggleCli} />
 
@@ -410,7 +456,7 @@ function MultiCombo({ value = [], onChange, options, placeholder = 'Todos', widt
 function Campo({ label, children }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>{label}</div>
+      <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>{label}</div>
       {children}
     </div>
   )
@@ -446,8 +492,36 @@ function statusColor(s) {
   if (/efetivad|recebid|retornad|conclu/.test(v)) return { bg: '#14532d', fg: '#4ade80' }
   if (/aprovad/.test(v))                            return { bg: '#0c4a6e', fg: '#38bdf8' }
   if (/envi|aprova.?.?o|pendent/.test(v))           return { bg: '#713f12', fg: '#fbbf24' }
+  if (/abert/.test(v))                              return { bg: '#713f12', fg: '#fbbf24' }
+  if (/fechad/.test(v))                             return { bg: '#14532d', fg: '#4ade80' }
+  if (/cancel|resídu|resid|não ger|nao ger|devolvid/.test(v)) return { bg: '#450a0a', fg: '#f87171' }
   if (/entrada|cadastr/.test(v))                    return { bg: '#334155', fg: '#cbd5e1' }
   return { bg: 'var(--bg-input)', fg: 'var(--text-muted)' }
+}
+
+// Badge de status reutilizável (cor pela regra de statusColor)
+function StatusBadge({ v }) {
+  const sc = statusColor(v)
+  return (
+    <span className="badge cut" style={{ background: sc.bg, color: sc.fg, fontSize: 10.5, display: 'inline-block', maxWidth: '100%' }} title={v}>
+      {v || '—'}
+    </span>
+  )
+}
+
+// Status do serviço: Entregue (verde) · Em dia (amarelo) · Atrasado (vermelho)
+function StatusServicoBadge({ v }) {
+  const map = {
+    'Entregue':  { bg: '#14532d', fg: '#4ade80' },
+    'Em dia':    { bg: '#713f12', fg: '#fbbf24' },
+    'Atrasado':  { bg: '#450a0a', fg: '#f87171' },
+  }
+  const c = map[v] || { bg: 'var(--bg-input)', fg: 'var(--text-muted)' }
+  return (
+    <span className="badge" style={{ background: c.bg, color: c.fg, fontSize: 10.5, fontWeight: 700 }} title={v}>
+      {v || '—'}
+    </span>
+  )
 }
 
 function diasColor(d) {
@@ -564,22 +638,24 @@ function ClienteGrupo({ cg, aberto, onToggle }) {
 function ProdutosTabela({ rows }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table className="tbl tbl-compact" style={{ width: '100%' }}>
+      <table className="tbl tbl-compact" style={{ width: '100%', minWidth: 1500 }}>
         <colgroup>
           <col style={{ width: '3%'  }} />{/* Item */}
-          <col style={{ width: '6%'  }} />{/* Cod. Assistencia */}
-          <col style={{ width: '15%' }} />{/* SKU */}
-          <col style={{ width: '10%' }} />{/* Servico */}
-          <col style={{ width: '4%'  }} />{/* Qtd */}
-          <col style={{ width: '8%'  }} />{/* Valor Produto */}
-          <col style={{ width: '5%'  }} />{/* Peso */}
-          <col style={{ width: '8%'  }} />{/* Valor Servico */}
-          <col style={{ width: '8%'  }} />{/* Total Servico */}
-          <col style={{ width: '9%'  }} />{/* Operacao */}
-          <col style={{ width: '6%'  }} />{/* Data Entrada */}
-          <col style={{ width: '6%'  }} />{/* Data Encerrada */}
+          <col style={{ width: '5%'  }} />{/* Cod. Assistencia */}
+          <col style={{ width: '13%' }} />{/* SKU */}
+          <col style={{ width: '9%'  }} />{/* Servico */}
+          <col style={{ width: '3%'  }} />{/* Qtd */}
+          <col style={{ width: '6%'  }} />{/* Valor Produto */}
+          <col style={{ width: '4%'  }} />{/* Peso */}
+          <col style={{ width: '6%'  }} />{/* Valor Servico */}
+          <col style={{ width: '6%'  }} />{/* Total Servico */}
+          <col style={{ width: '7%'  }} />{/* Data Entrada */}
+          <col style={{ width: '7%'  }} />{/* Data Encerrada */}
+          <col style={{ width: '7%'  }} />{/* Prev. Entrega */}
           <col style={{ width: '5%'  }} />{/* Dias Aberto */}
-          <col style={{ width: '7%'  }} />{/* Status */}
+          <col style={{ width: '6%'  }} />{/* Situação OS */}
+          <col style={{ width: '6%'  }} />{/* Situação (produto) */}
+          <col style={{ width: '7%'  }} />{/* Status do Serviço */}
         </colgroup>
         <thead>
           <tr>
@@ -592,18 +668,17 @@ function ProdutosTabela({ rows }) {
             <SubTH label="Peso" align="right" />
             <SubTH label="Valor Serviço" align="right" />
             <SubTH label="Total Serviço" align="right" />
-            <SubTH label="Operação" align="center" />
             <SubTH label="Dt Entrada" align="center" />
             <SubTH label="Dt Encerrada" align="center" />
+            <SubTH label="Prev. Entrega" align="center" />
             <SubTH label="Dias Ab" align="center" />
-            <SubTH label="Status" />
+            <SubTH label="Situação OS" align="center" />
+            <SubTH label="Situação" align="center" />
+            <SubTH label="Status do Serviço" align="center" />
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => {
-            const gc = garantiaColor(r.operacao)
-            const st = r.ultSituacao || r.statusProduto
-            const sc = statusColor(st)
             return (
               <tr key={i}>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-muted)' }}>
@@ -640,26 +715,22 @@ function ProdutosTabela({ rows }) {
                 <td style={{ textAlign: 'right', color: '#a3e635', fontWeight: 800, fontFamily: 'monospace', fontSize: 11.5 }}>
                   {r.valorTotal > 0 ? fBRL2(r.valorTotal) : '-'}
                 </td>
-                <td style={{ textAlign: 'center' }}>
-                  <span className="badge" style={{ background: gc.bg, color: gc.fg, fontSize: 10.5 }} title={r.operacao}>
-                    {r.operacao || '-'}
-                  </span>
-                </td>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5 }}>
-                  {r.dataEntrada ? fDataExt(r.dataEntrada) : '-'}
+                  {r.dataEntrada ? fDataNum(r.dataEntrada) : '-'}
                 </td>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: r.dataEncerramento ? '#4ade80' : 'var(--text-dim)' }}>
-                  {r.dataEncerramento ? fDataExt(r.dataEncerramento) : '—'}
+                  {r.dataEncerramento ? fDataNum(r.dataEncerramento) : '—'}
+                </td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 11.5, color: '#f5c518' }}>
+                  {r.prevEntrega ? fDataExt(r.prevEntrega) : '—'}
                 </td>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: 11.5,
                              color: r.dataEncerramento ? 'var(--text-muted)' : diasColor(r.diasEmAberto) }}>
                   {r.diasEmAberto != null ? `${fNum(r.diasEmAberto)} d` : '—'}
                 </td>
-                <td>
-                  <span className="badge cut" style={{ background: sc.bg, color: sc.fg, fontSize: 10.5, display: 'inline-block', maxWidth: '100%' }} title={st}>
-                    {st || '-'}
-                  </span>
-                </td>
+                <td style={{ textAlign: 'center' }}><StatusBadge v={r.statusOss} /></td>
+                <td style={{ textAlign: 'center' }}><StatusBadge v={r.situacao} /></td>
+                <td style={{ textAlign: 'center' }}><StatusServicoBadge v={r.statusServico} /></td>
               </tr>
             )
           })}

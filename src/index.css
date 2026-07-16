@@ -220,11 +220,12 @@
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
   .blink-alerta { animation: pulse 1s ease-in-out infinite; }
 
-  /* Fundos das expansões do Financeiro — adaptam ao tema (escuro no dark, claro no diurno) */
-  .fin-exp-clientes { background: color-mix(in srgb, var(--accent-title) 7%, #06070c); }
-  .fin-exp-contas   { background: color-mix(in srgb, var(--accent-title) 12%, #0d0e16); }
-  [data-theme="light"] .fin-exp-clientes { background: color-mix(in srgb, var(--accent-title) 12%, #d7dcee); }
-  [data-theme="light"] .fin-exp-contas   { background: color-mix(in srgb, var(--accent-title) 16%, #e7ebf7); }
+  /* Fundos das expansões do Financeiro — cada nível de drill-down tem sua própria cor
+     (Cliente = azul, Título/SKU = verde) para ficar claro em que profundidade você está. */
+  .fin-exp-clientes { background: color-mix(in srgb, #60a5fa 9%, #080a12); }
+  .fin-exp-contas   { background: color-mix(in srgb, #34d399 10%, #080f0d); }
+  [data-theme="light"] .fin-exp-clientes { background: color-mix(in srgb, #3b82f6 13%, #eef2fc); }
+  [data-theme="light"] .fin-exp-contas   { background: color-mix(in srgb, #10b981 13%, #e7f7ef); }
 
   .err-box {
     @apply px-4 py-3 rounded text-sm mb-4;

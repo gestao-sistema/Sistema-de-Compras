@@ -932,8 +932,8 @@ app.get('/api/status', (req, res) => {
   const st = S(req.query.empresa)
   const warmState = st.warmState
   const elapsed = Math.round((Date.now() - warmState.startedAt) / 1000)
-  // finCacheAt: horário da última atualização do financeiro (mostrado quando na tela Financeiro)
-  res.json({ ...warmState, elapsed, finCacheAt: st.finCacheAt || null })
+  // finCacheAt/assistCacheAt: horário da última atualização por contexto (Financeiro / Assistências)
+  res.json({ ...warmState, elapsed, finCacheAt: st.finCacheAt || null, assistCacheAt: _assistCacheAt || null })
 })
 
 app.get('/api/compras', async (req, res) => {
@@ -946,12 +946,40 @@ app.get('/api/compras', async (req, res) => {
 
 app.get('/api/produtos/options', async (req, res) => {
   try {
-    const all    = await getProdutos(empValida(req.query.empresa))
-    const grupos      = [...new Set(all.map(i => i.grupo).filter(Boolean))].sort()
-    const pedras      = [...new Set(all.map(i => i.pedra).filter(Boolean))].sort()
-    const tag2s       = [...new Set(all.map(i => i.tag2).filter(Boolean))].sort()
-    const categorias  = [...new Set(all.map(i => i.categoria).filter(Boolean))].sort()
-    const fornecedores= [...new Set(all.map(i => i.nomeFornecedor).filter(Boolean))].sort()
+    const all0 = await getProdutos(empValida(req.query.empresa))
+    const { search = '', codigo: cf = '', tipo = 'todos', ruptura: rf = '', grupo: gf = '',
+            pedra: pf = '', tag2: tf = '', categoria: catf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '' } = req.query
+    const all = applyFilial(all0, fil)
+    const q = search.trim().toLowerCase()
+
+    // Faceting: cada dropdown lista só os valores que existem considerando os DEMAIS
+    // filtros ativos (exclui o próprio). Assim, ao filtrar Grupo, o dropdown de TAG 2
+    // passa a mostrar só as tags que existem dentro daquele grupo — e vice-versa.
+    const preds = {
+      search:     i => !q  || i.descricao?.toLowerCase().includes(q),
+      codigo:     i => !cf || i.produto?.toLowerCase().includes(cf.toLowerCase()) || i.produtoBase?.toLowerCase().includes(cf.toLowerCase()),
+      grupo:      i => !gf   || (i.grupo     || '').toLowerCase() === gf.toLowerCase(),
+      pedra:      i => !pf   || (i.pedra     || '').toLowerCase() === pf.toLowerCase(),
+      tag2:       i => !tf   || (i.tag2      || '').toLowerCase() === tf.toLowerCase(),
+      categoria:  i => !catf || (i.categoria || '').toLowerCase() === catf.toLowerCase(),
+      fornecedor: i => !ff   || (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase(),
+      tipo:       i => tipo === 'todos' || (tipo === 'novo' ? i.isNovo === true : tipo === 'reposicao' ? i.isNovo === false : true),
+      ruptura:    i => !rf || (rf === 'ruptura'     ? (i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0)
+                            : rf === 'risco'        ? (i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0)
+                            : rf === 'normalizado'  ? !((i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0) || (i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0))
+                            : true),
+      estoque:    i => !esf || (esf === 'com' ? i._saldo > 0 : esf === 'sem' ? i._saldo <= 0 : esf === 'baixo' ? (i._saldo > 0 && i._dde < 30 && i._dde < 9999) : true),
+    }
+    // aplica todos os predicados menos os informados em `exceto` (o próprio filtro da dimensão)
+    const passa    = (i, exceto) => Object.entries(preds).every(([k, fn]) => exceto.includes(k) || fn(i))
+    const distinct = (exceto, campo) => [...new Set(all.filter(i => passa(i, exceto)).map(i => i[campo]).filter(Boolean))]
+      .sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'))
+
+    const grupos      = distinct(['grupo'], 'grupo')
+    const pedras      = distinct(['pedra'], 'pedra')
+    const tag2s       = distinct(['tag2'], 'tag2')
+    const categorias  = distinct(['categoria'], 'categoria')
+    const fornecedores= distinct(['fornecedor'], 'nomeFornecedor')
     res.json({ grupos, pedras, tag2s, categorias, fornecedores })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -1394,14 +1422,35 @@ function buildAssistencias(geral, filtroStatus = 'abertas') {
       }, 0)
       const entrada  = parseBRDate(os.emissao)
 
-      // Data de encerramento = maior data_retorno entre as assistências do fornecedor
+      // Previsão de entrega: usa prev_devolucao; se não houver, entrada + 60 dias (SLA)
+      const prevDoc  = parseBRDate(os.prev_devolucao)
+      const prazoDate = prevDoc || (entrada ? new Date(entrada.getTime() + 60 * 86400000) : null)
+      const prevEntregaStr = prazoDate ? prazoDate.toLocaleDateString('pt-BR') : ''
+
+      // Retorno do fornecedor = maior data_retorno entre as assistências do fornecedor
       let dataRetorno = null
       for (const f of (os.assistencia_fornecedor || [])) {
         const d = parseBRDate(f.data_retorno)
         if (d && (!dataRetorno || d > dataRetorno)) dataRetorno = d
       }
-      // Encerrada = tem data de encerramento (data_retorno); sem ela, está em aberto
-      const aberta = !dataRetorno
+      // Última data de serviço dos itens efetivados (fallback de encerramento quando não há
+      // data_retorno). Se nenhum efetivado tiver data, considera qualquer serviço da OS.
+      let ultServico = null, ultServicoAny = null
+      for (const p of produtos) {
+        const efet = /efetivad/i.test(p.situacao || '')
+        for (const s of (p.servico || [])) {
+          const d = parseBRDate(s.data)
+          if (!d) continue
+          if (!ultServicoAny || d > ultServicoAny) ultServicoAny = d
+          if (efet && (!ultServico || d > ultServico)) ultServico = d
+        }
+      }
+      ultServico = ultServico || ultServicoAny
+      // Encerrada = situação da OS é "Fechada" (status_assistencia); senão está aberta.
+      const aberta = !/fechad/i.test(os.status_assistencia || '')
+      // Data de encerramento: retorno do fornecedor; se vazio numa OS fechada, a última data
+      // de serviço (última movimentação). Fica vazia enquanto a OS está aberta.
+      const dataFim = dataRetorno || (!aberta ? ultServico : null)
       // Tem OSS do fornecedor? (assistência do fornecedor gerada)
       const temForn = (os.assistencia_fornecedor || []).length > 0
       // Fornecedor da OSS (nome) para fallback quando o produto não tem serviço
@@ -1422,9 +1471,10 @@ function buildAssistencias(geral, filtroStatus = 'abertas') {
       if (filtroStatus === 'abertas'    && !aberta) continue
       if (filtroStatus === 'encerradas' &&  aberta) continue
 
-      // Dias em aberto: conta da entrada até hoje; para de contar quando há data de encerramento (data_retorno)
-      const diasEmAberto  = entrada ? Math.max(0, diasEntre(entrada, dataRetorno || hoje)) : null
-      const diasDuracao   = (entrada && dataRetorno) ? Math.max(0, diasEntre(entrada, dataRetorno)) : null
+      // Dias em aberto: da entrada até hoje enquanto aberta; numa OS fechada, para na Dt Encerrada
+      const fimContagem   = aberta ? hoje : (dataFim || hoje)
+      const diasEmAberto  = entrada ? Math.max(0, diasEntre(entrada, fimContagem)) : null
+      const diasDuracao   = (entrada && dataFim) ? Math.max(0, diasEntre(entrada, dataFim)) : null
 
       for (const p of produtos) {
         const serv = (p.servico || [])[0] || {}
@@ -1433,6 +1483,11 @@ function buildAssistencias(geral, filtroStatus = 'abertas') {
         const qtd       = Number(p.quantidade) || 0
         // Serviço por grama (peso>0): unit × peso. Serviço por peça (peso=0): unit.
         const valorServ = peso > 0 ? valorUnit * peso : valorUnit
+        // Status do serviço: Entregue (situação Efetivado) | Atrasado (passou o prazo) | Em dia
+        const efetivado = /efetivad/i.test(p.situacao || '')
+        const statusServico = efetivado ? 'Entregue'
+          : (prazoDate && hoje > prazoDate) ? 'Atrasado'
+          : 'Em dia'
         rows.push({
           cliente:         cli.cliente,
           clienteNome:     cli.nome_cliente || cli.fantasia_cliente || '',
@@ -1440,6 +1495,9 @@ function buildAssistencias(geral, filtroStatus = 'abertas') {
           codigoAssistencia: p.codigo_assistencia || os.codigo || '',
           item:            p.item || '',
           statusOss:       os.status_assistencia || '',
+          statusFornecedor: os.status_assistencia_fornecedor || '',
+          prevEntrega:     prevEntregaStr,
+          statusServico:   statusServico,
           aberta,
           temForn,
           produtoCod:      p.produto,
@@ -1449,6 +1507,8 @@ function buildAssistencias(geral, filtroStatus = 'abertas') {
           valorProduto:    Number(p.valor_produto) || 0,
           operacao:        p.operacao || '',
           ultSituacao:     p.ult_situacao_servico || '',
+          situacao:        p.situacao || '',
+          situacaoServico: serv.situacao_servico || '',
           statusProduto:   p.situacao || p.ult_situacao_servico || '',
           fornecedor:      serv.nfornecedor_servico?.trim() || fornOss.nfornecedor?.trim() || '',
           fornecedorCod:   serv.fornecedor_servico || fornOss.fornecedor || '',
@@ -1460,7 +1520,7 @@ function buildAssistencias(geral, filtroStatus = 'abertas') {
           valorTotal:      valorServ * qtd,     // valor total = valor serviço × quantidade
           dataEntrada:     os.emissao || '',
           diasEmAberto,
-          dataEncerramento: dataRetorno ? dataRetorno.toLocaleDateString('pt-BR') : '',
+          dataEncerramento: dataFim ? dataFim.toLocaleDateString('pt-BR') : '',
           diasDuracao,
         })
       }
@@ -1673,6 +1733,15 @@ async function fetchFinanceiro(emp = 'alinare', force = false) {
 
 const brToInt = s => { const m = String(s || '').match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? +(m[3] + m[2] + m[1]) : null }
 
+// Classifica os "outros créditos" (títulos NC/NCI que não são nota de crédito de devolução)
+function classificaOutroCredito(hist) {
+  const s = String(hist || '').toUpperCase()
+  if (/PIX/.test(s))            return 'Adiantamento (PIX)'
+  if (/BAIXA AUTOM/.test(s))    return 'Baixa automática'
+  if (/TRANSF|TRANF/.test(s))   return 'Transferências'
+  return 'Ajustes'
+}
+
 // Parcela(s) de um título: nº quando única, lista quando parcelado (ex. "01/02/03")
 function parcelaDeConta(c) {
   const nums = []
@@ -1688,8 +1757,9 @@ function buildFinanceiro(fin, filtros = {}) {
   const splitSet = (s, low) => new Set(String(s || '').split('|').map(x => (low ? x.trim().toLowerCase() : x.trim())).filter(Boolean))
   const sitSet   = splitSet(filtros.situacao)            // 'pago' | 'aberto'
   const cliSet   = splitSet(filtros.cliente)             // códigos de cliente
+  const vendSet  = splitSet(filtros.vendedor)            // chave do vendedor (código/nome)
   const modSet   = splitSet(filtros.modalidade, true)    // formas de pagamento (lower)
-  const parcSet  = splitSet(filtros.parcela)             // parcelas (ex. "01", "01/02")
+  const parcSet  = splitSet(filtros.parcela)             // qtd de parcelas (ex. "1", "2")
   const vencidas = filtros.vencidas === 'true' || filtros.vencidas === true
   const deInt    = filtros.de  ? +String(filtros.de).replace(/-/g, '')  : null   // aaaa-mm-dd
   const ateInt   = filtros.ate ? +String(filtros.ate).replace(/-/g, '') : null
@@ -1697,23 +1767,28 @@ function buildFinanceiro(fin, filtros = {}) {
   const pagAteInt = filtros.pagAte ? +String(filtros.pagAte).replace(/-/g, '') : null
   const hoje     = new Date(); const hojeInt = hoje.getFullYear() * 10000 + (hoje.getMonth() + 1) * 100 + hoje.getDate()
 
-  // Opções de cliente e de parcela = todo o cache (independe dos filtros ativos)
-  const cliOpcMap = new Map()
+  // Opções faceteadas: cada filtro lista só o que existe considerando os DEMAIS filtros
+  // ativos (exclui ele mesmo). Assim, ao filtrar, os outros filtros não mostram opções
+  // que zerariam o resultado. Preenchidas dentro do loop principal.
+  const cliOpcMap = new Map()   // codigo -> nome
+  const vendOpcMap = new Map()  // chave do vendedor -> nome
   const parcOpcSet = new Set()
-  for (const v of vendedoresRaw) for (const c of (v.ContasAReceber || [])) {
-    const cod = c.Cliente || ''
-    if (cod && !cliOpcMap.has(cod)) cliOpcMap.set(cod, c.Nome || cod)
-    const pc = parcelaDeConta(c); if (pc) parcOpcSet.add(pc)
-  }
-  const clientesOpcoes = [...cliOpcMap.entries()]
-    .map(([codigo, nome]) => ({ codigo, nome }))
-    .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
-  const parcelasOpcoes = [...parcOpcSet].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+  const modOpcSet  = new Set()  // formas (rótulo original)
+  let temAberto = false, temPago = false
 
   // Hierarquia: VENDEDOR → CLIENTE → CONTAS (filtros aplicados no nível da conta)
   const mapaV = {}
+  let ncTotal = 0            // total de notas de crédito (devolução/assistência) no conjunto filtrado
+  const ncPorTipo = {}       // impacto das NC reais agrupado por tipo (prefixo do documento)
+  let outrosTotal = 0        // outros créditos (adiantamentos NC/NCI: PIX, baixa, transferências…)
+  const outrosPorTipo = {}
+  let recPositivo = 0        // entradas positivas (dinheiro/cartão/pix/cheque… — formas reais)
+  let estornos = 0           // pagamentos negativos que não são NC nem outros créditos (cancelamentos)
+  let ncUsada = 0            // nota de crédito usada como forma de pagamento (crédito consumido)
   for (const v of vendedoresRaw) {
     const vk = v.Vendedor || v.NVendedor || '—'
+    const vNome = v.NVendedor || v.Vendedor || '—'
+    const okVend = !vendSet.size || vendSet.has(vk)
     for (const c of (v.ContasAReceber || [])) {
       let cPago = 0, cPend = 0, cDevido = 0, venc = ''
       for (const p of (c.Parcelas || [])) {
@@ -1723,6 +1798,7 @@ function buildFinanceiro(fin, filtros = {}) {
         if (saldo > 0) { cPend += saldo; if (!venc) venc = p.VencimentoReal || p.Vencimento || '' }
       }
       const parcela = parcelaDeConta(c)   // nº quando única, lista quando parcelado
+      const parcelaQtd = parcela ? parcela.split('/').length : 0   // qtd de parcelas (p/ filtro "Nx")
       const aberto = cPend > 0
       const formas = {}
       let pgData = '', pgDataInt = 0                     // última data de pagamento
@@ -1734,36 +1810,88 @@ function buildFinanceiro(fin, filtros = {}) {
         if (di && di >= pgDataInt) { pgDataInt = di; pgData = pg.DataPagamento }
       }
 
-      // ── filtros (multi-seleção) ──
-      if (sitSet.size && !((aberto && sitSet.has('aberto')) || (!aberto && sitSet.has('pago')))) continue
+      // ── condições por filtro (multi-seleção); vazio = filtro inativo ──
       const emiInt = brToInt(c.Emissao)
-      if (deInt  && (!emiInt || emiInt < deInt))  continue
-      if (ateInt && (!emiInt || emiInt > ateInt)) continue
-      // filtro por data de pagamento (contas sem pagamento saem quando o filtro está ativo)
-      if (pagDeInt  && (!pgDataInt || pgDataInt < pagDeInt))  continue
-      if (pagAteInt && (!pgDataInt || pgDataInt > pagAteInt)) continue
-      if (vencidas) { const vInt = brToInt(venc); if (!(aberto && vInt && vInt < hojeInt)) continue }
-      if (cliSet.size && !cliSet.has(c.Cliente)) continue
-      if (modSet.size && !Object.keys(formas).some(f => modSet.has(f.toLowerCase()))) continue
-      if (parcSet.size && !parcSet.has(parcela)) continue
+      const vInt   = brToInt(venc)
+      const formasKeys = Object.keys(formas)
+      const okSit  = !sitSet.size  || ((aberto && sitSet.has('aberto')) || (!aberto && sitSet.has('pago')))
+      const okDatas = (!deInt  || (emiInt && emiInt >= deInt)) &&
+                      (!ateInt || (emiInt && emiInt <= ateInt)) &&
+                      (!pagDeInt  || (pgDataInt && pgDataInt >= pagDeInt)) &&
+                      (!pagAteInt || (pgDataInt && pgDataInt <= pagAteInt)) &&
+                      (!vencidas  || (aberto && vInt && vInt < hojeInt))
+      const okCli  = !cliSet.size  || cliSet.has(c.Cliente)
+      const okMod  = !modSet.size  || formasKeys.some(f => modSet.has(f.toLowerCase()))
+      const okParc = !parcSet.size || parcSet.has(String(parcelaQtd))
+
+      // Opções faceteadas: cada filtro considera todos os OUTROS (menos ele mesmo)
+      if (okVend && okDatas && okCli && okMod && okParc) { if (aberto) temAberto = true; else temPago = true }
+      if (okVend && okSit && okDatas && okMod && okParc) {
+        const cod = c.Cliente || ''
+        if (cod && !cliOpcMap.has(cod)) cliOpcMap.set(cod, c.Nome || cod)
+      }
+      if (okVend && okSit && okDatas && okCli && okParc) for (const f of formasKeys) modOpcSet.add(f)
+      if (okVend && okSit && okDatas && okCli && okMod && parcelaQtd) parcOpcSet.add(parcelaQtd)
+      if (okSit && okDatas && okCli && okMod && okParc && !vendOpcMap.has(vk)) vendOpcMap.set(vk, vNome)
+
+      // Entra no resultado só quando passa em TODOS os filtros
+      if (!(okVend && okSit && okDatas && okCli && okMod && okParc)) continue
+
+      // Nota de crédito usada como forma de pagamento (crédito consumido) — só referência
+      for (const [f, val] of Object.entries(formas)) if (/nota de cr[eé]dito/i.test(f) && val > 0) ncUsada += val
 
       // Na visão "vencidas" só interessa o valor vencido a receber — zera o Concluído
       const pagoEf = vencidas ? 0 : cPago
-      if (!mapaV[vk]) mapaV[vk] = { nome: v.NVendedor || v.Vendedor || '—', codigo: v.Vendedor || '', cli: {}, mod: {} }
+      // Nota de crédito = título de devolução, identificado pelo histórico "NOTA DE CREDITO"
+      // (quase sempre prefixo ORC/ASS, valor negativo). Impacto no total = pago + pendente.
+      const contrib = pagoEf + cPend
+      const ehNC = /nota de cr[eé]dito/i.test(c.Historico || '')
+      const pfxUp = (c.Prefixo || '').trim().toUpperCase()
+      const ehOutroCred = !ehNC && (pfxUp === 'NC' || pfxUp === 'NCI')
+      const impactoNC = ehNC ? contrib : 0
+      if (ehNC) {
+        ncTotal += impactoNC
+        const tipo = pfxUp || '—'
+        ncPorTipo[tipo] = (ncPorTipo[tipo] || 0) + impactoNC
+      } else if (ehOutroCred) {
+        outrosTotal += contrib
+        const tipo = classificaOutroCredito(c.Historico)
+        outrosPorTipo[tipo] = (outrosPorTipo[tipo] || 0) + contrib
+      } else if (pagoEf >= 0) {
+        recPositivo += pagoEf
+      } else {
+        estornos += pagoEf
+      }
+      if (!mapaV[vk]) mapaV[vk] = { nome: v.NVendedor || v.Vendedor || '—', codigo: v.Vendedor || '', cli: {}, mod: {}, nc: 0 }
+      mapaV[vk].nc += impactoNC
       const cliMap = mapaV[vk].cli
       const key = c.Cliente || c.Nome || '—'
-      if (!cliMap[key]) cliMap[key] = { nome: c.Nome || key, codigo: c.Cliente || '', devido: 0, pago: 0, pend: 0, mod: {}, contas: [] }
+      if (!cliMap[key]) cliMap[key] = { nome: c.Nome || key, codigo: c.Cliente || '', devido: 0, pago: 0, pend: 0, nc: 0, mod: {}, contas: [] }
       cliMap[key].pago += pagoEf
       cliMap[key].pend += cPend
       cliMap[key].devido += cDevido
+      cliMap[key].nc += impactoNC
       // Modalidade(s) de pagamento desta conta — forma(s) ordenada(s) por valor
       const modalidadeConta = Object.entries(formas).filter(([, val]) => val > 0)
         .sort((a, b) => b[1] - a[1]).map(([f]) => f).join(', ')
+      // Detalhe por parcela (só quando parcelado) — devido/recebido/pendente de cada uma
+      const parcelasDet = (c.Parcelas || []).map(p => {
+        const dev = Number(p.ValorTotal) || 0, rec = Number(p.ValorPago) || 0, pen = Number(p.SaldoAberto) || 0
+        return {
+          parcela: String(p.Parcela || '').trim(),
+          vencimento: p.VencimentoReal || p.Vencimento || '',
+          // A fonte não traz data de pagamento por parcela — usa a quitação do título nas pagas
+          pagamento: (pen === 0 && rec !== 0) ? pgData : '',
+          devido: dev, recebido: rec, pendente: pen, aberto: pen > 0,
+        }
+      }).sort((a, b) => a.parcela.localeCompare(b.parcela, 'pt-BR', { numeric: true }))
       cliMap[key].contas.push({
         numero: c.Numero || '', prefixo: c.Prefixo || '', emissao: c.Emissao || '',
         historico: c.Historico || '', vencimento: venc, pagamento: vencidas ? '' : pgData,
         modalidade: vencidas ? '' : modalidadeConta, parcela,
         devido: cDevido, pago: pagoEf, pend: cPend, total: pagoEf + cPend, aberto,
+        notaCredito: impactoNC,   // valor da NC deste título (0 se não for nota de crédito)
+        parcelas: parcelasDet.length > 1 ? parcelasDet : undefined,
       })
       if (!vencidas) for (const [forma, val] of Object.entries(formas)) {
         cliMap[key].mod[forma]  = (cliMap[key].mod[forma]  || 0) + val
@@ -1779,15 +1907,15 @@ function buildFinanceiro(fin, filtros = {}) {
       const total = c.pago + c.pend
       const modalidades = Object.entries(c.mod).filter(([, x]) => x > 0)
         .map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
-      const { mod, ...rest } = c
+      const { mod, nc, ...rest } = c
       vp += c.pago; vpe += c.pend; vd += c.devido
-      return { ...rest, total, pctPend: total > 0 ? (c.pend / total) * 100 : 0, modalidades }
+      return { ...rest, total, pctPend: total > 0 ? (c.pend / total) * 100 : 0, modalidades, notaCredito: nc || 0 }
     }).sort((a, b) => b.total - a.total)
     const vtotal = vp + vpe
     totPago += vp; totPend += vpe; totDevido += vd
     const modalidades = Object.entries(v.mod).filter(([, x]) => x > 0)
       .map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
-    return { nome: v.nome, codigo: v.codigo, devido: vd, pago: vp, pend: vpe, total: vtotal, pctPend: vtotal > 0 ? (vpe / vtotal) * 100 : 0, clientesCount: clientes.length, modalidades, clientes }
+    return { nome: v.nome, codigo: v.codigo, devido: vd, pago: vp, pend: vpe, total: vtotal, pctPend: vtotal > 0 ? (vpe / vtotal) * 100 : 0, clientesCount: clientes.length, notaCredito: v.nc || 0, modalidades, clientes }
   }).sort((a, b) => b.total - a.total)
   const totGeral = totPago + totPend
 
@@ -1798,14 +1926,37 @@ function buildFinanceiro(fin, filtros = {}) {
     .map(p => ({ forma: p.FormaPagamento || p.Numerario || '—', valor: Number(p.ValorPago) || 0, pct: modTotal > 0 ? (Number(p.ValorPago) / modTotal) * 100 : 0 }))
     .sort((a, b) => b.valor - a.valor)
 
+  // Opções faceteadas para os dropdowns dos filtros
+  const clientesOpcoes = [...cliOpcMap.entries()]
+    .map(([codigo, nome]) => ({ codigo, nome }))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
+  const vendedoresOpcoes = [...vendOpcMap.entries()]
+    .map(([codigo, nome]) => ({ codigo, nome }))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
+  const parcelasOpcoes = [...parcOpcSet].sort((a, b) => a - b).map(n => ({ value: String(n), label: `${n}x` }))
+  const modalidadesOpcoes = [...modOpcSet].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  const situacoesOpcoes = [...(temPago ? ['pago'] : []), ...(temAberto ? ['aberto'] : [])]
+
   return {
     updatedAt: new Date().toISOString(),
-    cards: { concluido: totPago, pendente: totPend, total: totGeral, pctPend: totGeral > 0 ? (totPend / totGeral) * 100 : 0 },
+    cards: {
+      concluido: totPago, pendente: totPend, total: totGeral,
+      pctPend: totGeral > 0 ? (totPend / totGeral) * 100 : 0,
+      notaCredito: ncTotal,
+      notaCreditoTipos: Object.entries(ncPorTipo).map(([tipo, valor]) => ({ tipo, valor })).sort((a, b) => a.valor - b.valor),
+      outrosCredito: outrosTotal,
+      outrosCreditoTipos: Object.entries(outrosPorTipo).map(([tipo, valor]) => ({ tipo, valor })).sort((a, b) => a.valor - b.valor),
+      // Composição do Total Geral (waterfall): positivos − créditos/estornos + pendente
+      composicao: { recPositivo, ncUsada, estornos, notaCredito: ncTotal, outrosCredito: outrosTotal, recebido: totPago, pendente: totPend, total: totGeral },
+    },
     vendedores,
     modalidade,
     modalidadeTotal: modTotal,
     clientes: clientesOpcoes,
+    vendedoresOpcoes,
     parcelas: parcelasOpcoes,
+    modalidadesOpcoes,
+    situacoes: situacoesOpcoes,
   }
 }
 
@@ -1821,8 +1972,8 @@ app.get('/api/financeiro', async (req, res) => {
       // 1ª carga ou instabilidade da API (outage) — frontend fica "carregando" e repolla
       return res.json({ carregando: true, cards: {}, vendedores: [], modalidade: [] })
     }
-    const { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade, parcela } = req.query
-    res.json(buildFinanceiro(fin, { de, ate, pagDe, pagAte, situacao, vencidas, cliente, modalidade, parcela }))
+    const { de, ate, pagDe, pagAte, situacao, vencidas, cliente, vendedor, modalidade, parcela } = req.query
+    res.json(buildFinanceiro(fin, { de, ate, pagDe, pagAte, situacao, vencidas, cliente, vendedor, modalidade, parcela }))
   } catch (e) {
     res.status(200).json({ erro: e.message, cards: {}, vendedores: [], modalidade: [] })
   }

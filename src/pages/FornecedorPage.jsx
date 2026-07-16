@@ -47,10 +47,20 @@ export default function FornecedorPage() {
   const data   = q.data || { nomesDisponiveis: [], fornecedores: [], duplicados: [] }
   const hasFilter = fornFiltro || dataInicio || dataFim || grupoFiltro || tag2Filtro || pedraFiltro || rupturaFiltro
 
-  // opções derivadas de todos os produtos
-  const opGrupos = useMemo(() => [...new Set(data.fornecedores.flatMap(f => f.produtos.map(p => p.grupo)).filter(Boolean))].sort(), [data.fornecedores])
-  const opTag2s  = useMemo(() => [...new Set(data.fornecedores.flatMap(f => f.produtos.map(p => p.tag2)).filter(Boolean))].sort(),  [data.fornecedores])
-  const opPedras = useMemo(() => [...new Set(data.fornecedores.flatMap(f => f.produtos.map(p => p.pedra)).filter(Boolean))].sort(), [data.fornecedores])
+  // Opções faceteadas: cada dropdown lista só o que existe considerando os DEMAIS
+  // filtros de produto ativos (exclui o próprio). Assim, ao escolher Grupo, os dropdowns
+  // de Tag2/Pedra passam a mostrar só o que existe dentro daquele grupo — e vice-versa.
+  const allProds = useMemo(() => data.fornecedores.flatMap(f => f.produtos), [data.fornecedores])
+  const opGrupos = useMemo(() => [...new Set(applyProdFiltros(allProds, { tag2Filtro, pedraFiltro, rupturaFiltro }).map(p => p.grupo).filter(Boolean))].sort(), [allProds, tag2Filtro, pedraFiltro, rupturaFiltro])
+  const opTag2s  = useMemo(() => [...new Set(applyProdFiltros(allProds, { grupoFiltro, pedraFiltro, rupturaFiltro }).map(p => p.tag2).filter(Boolean))].sort(),  [allProds, grupoFiltro, pedraFiltro, rupturaFiltro])
+  const opPedras = useMemo(() => [...new Set(applyProdFiltros(allProds, { grupoFiltro, tag2Filtro, rupturaFiltro }).map(p => p.pedra).filter(Boolean))].sort(), [allProds, grupoFiltro, tag2Filtro, rupturaFiltro])
+  // Fornecedor segue os filtros de produto (quando nenhum fornecedor específico está fixado)
+  const opForn = useMemo(() => {
+    const anyProd = grupoFiltro || tag2Filtro || pedraFiltro || rupturaFiltro
+    if (!anyProd || fornFiltro) return data.nomesDisponiveis
+    const comMatch = new Set(data.fornecedores.filter(f => applyProdFiltros(f.produtos, { grupoFiltro, tag2Filtro, pedraFiltro, rupturaFiltro }).length > 0).map(f => f.nome))
+    return data.nomesDisponiveis.filter(n => comMatch.has(n))
+  }, [data.nomesDisponiveis, data.fornecedores, grupoFiltro, tag2Filtro, pedraFiltro, rupturaFiltro, fornFiltro])
 
   // filtro de produtos aplicado dentro de cada fornecedor
   const prodFiltros = { grupoFiltro, tag2Filtro, pedraFiltro, rupturaFiltro }
@@ -117,7 +127,7 @@ export default function FornecedorPage() {
             <div className="text-xs uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Fornecedor</div>
             <select value={fornFiltro} onChange={e => setFornFiltro(e.target.value)} className="inp text-xs" style={{ minWidth: 180 }}>
               <option value="">Todos</option>
-              {data.nomesDisponiveis.map(n => <option key={n} value={n}>{n}</option>)}
+              {opForn.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
           </div>
 

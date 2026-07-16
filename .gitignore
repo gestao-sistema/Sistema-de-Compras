@@ -11,3 +11,5 @@ setup-usuarios.mjs
 shots.js
 shots.mjs
 *.local
+*.bak
+URLS.txt

@@ -58,7 +58,12 @@ export default function ComprasPage() {
 
   function changeTab(v) { setRupturaTab(v); setPage(0) }
 
-  const optQ     = useQuery({ queryKey: ['produtos-options'],    queryFn: api.produtosOptions,    staleTime: Infinity })
+  const optQ     = useQuery({
+    queryKey: ['produtos-options', dbSearch, grupoFilter, pedraFilter, tag2Filter, filialFilter],
+    queryFn:  () => api.produtosOptions({ search: dbSearch, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, filial: filialFilter || undefined }),
+    staleTime: 30000,
+    placeholderData: keepPreviousData,
+  })
   // busca imediata — usado na coluna Solicitado e no sort global
   const pedidosQ = useQuery({ queryKey: ['pedidos-por-produto'], queryFn: api.pedidosPorProduto, staleTime: 5 * 60 * 1000, refetchOnMount: true })
   const opts         = optQ.data     || { grupos: [], pedras: [], tag2s: [] }
@@ -210,21 +215,21 @@ export default function ComprasPage() {
         <div className="card">
           <div className="flex flex-wrap items-end gap-4">
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Grupo</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>Grupo</div>
               <select value={grupoFilter} onChange={e => { setGrupoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
                 <option value="">Todos</option>
                 {opts.grupos.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Tipo de Pedra</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>Tipo de Pedra</div>
               <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 150 }}>
                 <option value="">Todas</option>
                 {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>TAG 2</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>TAG 2</div>
               <select value={tag2Filter} onChange={e => { setTag2Filter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 120 }}>
                 <option value="">Todas</option>
                 {opts.tag2s.map(t => <option key={t} value={t}>{t}</option>)}
@@ -232,11 +237,11 @@ export default function ComprasPage() {
             </div>
             <FilialSelector value={filialFilter} onChange={v => { setFilialFilter(v); setPage(0) }} />
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Código Filho</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>Código Filho</div>
               <input value={codigoFilter} onChange={e => setCodigoFilter(e.target.value)} placeholder="ex: 506300001" className="inp text-xs" style={{ width: 130 }} />
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent)' }}>Descrição</div>
+              <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>Descrição</div>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Pesquisar…" className="inp text-xs" style={{ width: 170 }} />
             </div>
             {hasFilters && <button onClick={reset} className="btn-ghost text-xs self-end">✕ Limpar</button>}

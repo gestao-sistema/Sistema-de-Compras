@@ -80,12 +80,17 @@ export default function Layout() {
     prevRefreshed.current = lr
   }, [statusQ.data?.lastRefreshed, qc])
 
-  // "Última atualização" contextual: na tela Financeiro mostra o horário do financeiro;
-  // nas demais, o horário do refresh de produtos (dashboard/curva/sugestão/etc.).
+  // "Última atualização" contextual: Financeiro → horário do financeiro; Assistências →
+  // horário do cache de assistências; nas demais, o refresh de produtos (estoque).
   const location = useLocation()
-  const naFinanceiro = location.pathname.startsWith('/financeiro')
-  const atualizadoEm = naFinanceiro ? statusQ.data?.finCacheAt : statusQ.data?.lastRefreshed
-  const contextoLabel = naFinanceiro ? 'Contas a Receber' : 'Estoque'
+  const naFinanceiro   = location.pathname.startsWith('/financeiro')
+  const naAssistencia  = location.pathname.startsWith('/assistencia')
+  const atualizadoEm = naFinanceiro  ? statusQ.data?.finCacheAt
+                     : naAssistencia ? statusQ.data?.assistCacheAt
+                     : statusQ.data?.lastRefreshed
+  const contextoLabel = naFinanceiro  ? 'Contas a Receber'
+                      : naAssistencia ? 'Assistências'
+                      : 'Estoque'
 
   const isRefreshing = statusQ.data?.done === false
 
@@ -159,8 +164,8 @@ export default function Layout() {
                   {new Date(atualizadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                 </div>
               </>
-            ) : naFinanceiro && (
-              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>Contas a Receber carregando…</div>
+            ) : (naFinanceiro || naAssistencia) && (
+              <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>{contextoLabel} carregando…</div>
             )}
           </div>
           <button
