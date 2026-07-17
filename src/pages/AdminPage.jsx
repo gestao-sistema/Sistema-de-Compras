@@ -215,8 +215,8 @@ export default function AdminPage() {
                 <div style={{ fontSize:11, color:'#6b7280', marginTop:1 }}>
                   {isAdmin ? '⭐ Admin' : 'Usuário'} · {EMPRESAS.find(e => e.value === u.empresa)?.label || u.empresa}
                 </div>
-                {/* Chips do que o usuário tem acesso */}
-                <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
+                {/* Chips do que o usuário tem acesso (super-admin não mostra chips) */}
+                {!isTargetSuper && <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
                   {temFin && (
                     <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
                       background:'rgba(245,197,24,0.14)', border:'1px solid rgba(245,197,24,0.5)', color:'#f5c518' }}>
@@ -231,7 +231,7 @@ export default function AdminPage() {
                   )) : (!temFin && (
                     <span style={{ fontSize:10, color:'#6b7280' }}>Sem acesso a nenhuma página</span>
                   ))}
-                </div>
+                </div>}
               </div>
 
               {/* Controles rápidos */}
@@ -280,9 +280,7 @@ export default function AdminPage() {
                     </button>
                   </div>
                 )}
-                {isTargetSuper ? (
-                  <p style={{ fontSize:12, color:'#D4AF37' }}>👑 Super-admin — acesso total a tudo (não pode ser restrito).</p>
-                ) : (
+                {isTargetSuper ? null : (
                   <>
                     {isAdmin && <p style={{ fontSize:11.5, color:'#93c5fd', marginBottom:10 }}>Admin: acessa a tela de Usuários. As demais páginas são liberadas abaixo (pode ter telas sem acesso).</p>}
                     <div style={{ display:'flex', gap:8, marginBottom:14, alignItems:'center' }}>
