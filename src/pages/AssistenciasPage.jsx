@@ -25,6 +25,7 @@ function toISO(s) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : ''
 }
 
+const SEM_FORN = '(sem fornecedor)'  // rótulo p/ linhas sem fornecedor (filtro e agrupamento)
 const UNID = '#f5c518'  // quantidade (amarelo)
 // Identidade de cor por coluna
 const PROD = '#38bdf8'  // Produto  → azul
@@ -83,13 +84,13 @@ export default function AssistenciasPage() {
       return true
     }
     const pCli  = r => !clienteF.length    || clienteF.includes(r.clienteNome)
-    const pForn = r => !fornecedorF.length || fornecedorF.includes(r.fornecedor)
+    const pForn = r => !fornecedorF.length || fornecedorF.includes(r.fornecedor || SEM_FORN)
     const pServ = r => !servicoF.length    || servicoF.includes(r.servicoDesc)
     const pStat = r => !statusF.length     || statusF.includes(r.statusOss)
     const pOp   = r => !operacaoF.length   || operacaoF.includes(r.operacao)
 
-    // coleta valores distintos de `campo`, aplicando todos os predicados menos `excl`
-    const collect = (excl, campo) => {
+    // coleta valores distintos de `valOf(r)`, aplicando todos os predicados menos `excl`
+    const collect = (excl, valOf) => {
       const set = new Set()
       for (const r of rows) {
         if (!pTerm(r) || !pOsC(r) || !pOsF(r) || !pData(r)) continue
@@ -98,16 +99,16 @@ export default function AssistenciasPage() {
         if (excl !== 'serv' && !pServ(r)) continue
         if (excl !== 'stat' && !pStat(r)) continue
         if (excl !== 'op'   && !pOp(r))   continue
-        const v = r[campo]; if (v) set.add(v)
+        const v = valOf(r); if (v) set.add(v)
       }
       return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'))
     }
     return {
-      clientes:     collect('cli',  'clienteNome'),
-      fornecedores: collect('forn', 'fornecedor'),
-      servicos:     collect('serv', 'servicoDesc'),
-      situacoes:    collect('stat', 'statusOss'),
-      operacoes:    collect('op',   'operacao'),
+      clientes:     collect('cli',  r => r.clienteNome),
+      fornecedores: collect('forn', r => r.fornecedor || SEM_FORN),
+      servicos:     collect('serv', r => r.servicoDesc),
+      situacoes:    collect('stat', r => r.statusOss),
+      operacoes:    collect('op',   r => r.operacao),
     }
   }, [rows, busca, osClienteF, osFornF, dataIni, dataFim, clienteF, fornecedorF, servicoF, statusF, operacaoF])
 
@@ -126,7 +127,7 @@ export default function AssistenciasPage() {
         (r.osCliente || '').toLowerCase().includes(term)
       )) return false
       if (clienteF.length    && !clienteF.includes(r.clienteNome))     return false
-      if (fornecedorF.length && !fornecedorF.includes(r.fornecedor))   return false
+      if (fornecedorF.length && !fornecedorF.includes(r.fornecedor || SEM_FORN)) return false
       if (servicoF.length    && !servicoF.includes(r.servicoDesc))     return false
       if (statusF.length     && !statusF.includes(r.statusOss))        return false
       if (operacaoF.length   && !operacaoF.includes(r.operacao))       return false
@@ -163,7 +164,7 @@ export default function AssistenciasPage() {
   const grupos = useMemo(() => {
     const fMap = new Map()
     for (const r of filtradas) {
-      const fKey = r.fornecedor || '(sem fornecedor)'
+      const fKey = r.fornecedor || SEM_FORN
       if (!fMap.has(fKey)) {
         fMap.set(fKey, {
           key: fKey, fornecedor: fKey, nProdutos: 0,
