@@ -1,4 +1,8 @@
 ﻿import { useState, useEffect } from 'react'
+import { useAuth } from '../contexts/AuthContext'
+
+// Super-admins: únicos que podem deletar usuário e trocar senha
+const SUPER_ADMINS = ['rafael.silva@azime.com.br', 'renato@azime.com.br']
 
 const PAGINAS = [
   { chave: 'dashboard',              label: 'Dashboard' },
@@ -28,6 +32,8 @@ async function api(method, path, body) {
 }
 
 export default function AdminPage() {
+  const { session } = useAuth()
+  const isSuper = SUPER_ADMINS.includes((session?.user?.email || '').toLowerCase())
   const [usuarios,    setUsuarios]    = useState([])
   const [permissoes,  setPermissoes]  = useState({})
   const [loading,     setLoading]     = useState(true)
@@ -96,7 +102,17 @@ export default function AdminPage() {
     setPermissoes(p => ({ ...p, [userId]: novo }))
   }
 
+  async function trocarSenha(userId, nome) {
+    if (!isSuper) return
+    const nova = window.prompt(`Nova senha para "${nome}" (mín. 6 caracteres):`)
+    if (!nova) return
+    const data = await api('POST', '/api/admin/senha', { id: userId, password: nova })
+    if (data.error) flash(data.error, 'erro')
+    else flash('Senha alterada!')
+  }
+
   async function deletarUsuario(userId, nome) {
+    if (!isSuper) return
     if (!window.confirm(`Deletar "${nome}" permanentemente? Essa ação não pode ser desfeita.`)) return
     const data = await api('DELETE', `/api/admin/usuarios/${userId}`)
     if (data.error) flash(data.error, 'erro')
@@ -270,6 +286,21 @@ export default function AdminPage() {
                     </div>
                   )
                 })()}
+                {/* Ações sensíveis — só Rafael/Renato */}
+                {isSuper && (
+                  <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+                    <button onClick={() => trocarSenha(u.id, u.nome)}
+                      style={{ padding:'5px 12px', borderRadius:6, fontSize:11, fontWeight:700, cursor:'pointer',
+                        background:'rgba(96,165,250,0.12)', border:'1px solid rgba(96,165,250,0.45)', color:'#93c5fd' }}>
+                      🔑 Trocar senha
+                    </button>
+                    <button onClick={() => deletarUsuario(u.id, u.nome)}
+                      style={{ padding:'5px 12px', borderRadius:6, fontSize:11, fontWeight:700, cursor:'pointer',
+                        background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.4)', color:'#f87171' }}>
+                      🗑 Deletar usuário
+                    </button>
+                  </div>
+                )}
                 {isAdmin ? (
                   <p style={{ fontSize:12, color:'#D4AF37' }}>Admin tem acesso total às demais páginas automaticamente.</p>
                 ) : (
@@ -277,12 +308,6 @@ export default function AdminPage() {
                     <div style={{ display:'flex', gap:8, marginBottom:14, alignItems:'center' }}>
                       <button onClick={() => liberarTudo(u.id)} className="btn-ghost text-xs" style={{ color:'#4ade80' }}>✓ Liberar tudo</button>
                       <button onClick={() => bloquearTudo(u.id)} className="btn-ghost text-xs" style={{ color:'#f87171' }}>✕ Bloquear tudo</button>
-                      <div style={{ flex:1 }} />
-                      <button onClick={() => deletarUsuario(u.id, u.nome)}
-                        style={{ padding:'4px 12px', borderRadius:6, fontSize:11, fontWeight:700, cursor:'pointer',
-                          background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.4)', color:'#f87171' }}>
-                        🗑 Deletar usuário
-                      </button>
                     </div>
                     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:8 }}>
                       {PAGINAS.map(pag => {

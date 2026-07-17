@@ -2492,8 +2492,21 @@ app.delete('/api/admin/usuarios/:id', async (req, res) => {
 app.post('/api/admin/permissoes', async (req, res) => {
   try {
     const rows = Array.isArray(req.body) ? req.body : [req.body]
-    const result = await supabaseAdmin('POST', '/rest/v1/permissoes', rows)
+    // on_conflict=user_id,chave → upsert real (atualiza se já existe; senão insere)
+    const result = await supabaseAdmin('POST', '/rest/v1/permissoes?on_conflict=user_id,chave', rows)
     console.log('[admin/permissoes] result:', JSON.stringify(result).slice(0, 200))
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Troca de senha de um usuário (restrito no frontend a Rafael/Renato)
+app.post('/api/admin/senha', async (req, res) => {
+  try {
+    const { id, password } = req.body
+    if (!id || !password) return res.status(400).json({ error: 'id e senha são obrigatórios' })
+    if (String(password).length < 6) return res.status(400).json({ error: 'A senha deve ter ao menos 6 caracteres' })
+    const r = await supabaseAdmin('PUT', `/auth/v1/admin/users/${id}`, { password })
+    if (r?.error || r?.msg) return res.status(400).json({ error: r.msg || r.error })
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
