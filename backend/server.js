@@ -2511,6 +2511,20 @@ app.post('/api/admin/senha', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Perfil + permissões do próprio usuário (via service key — ignora RLS, que está com
+// recursão na policy de profiles). Evita o fallback que dava admin a quem não lê o perfil.
+app.get('/api/me/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const [profs, perms] = await Promise.all([
+      supabaseAdmin('GET', `/rest/v1/profiles?id=eq.${id}&select=*`),
+      supabaseAdmin('GET', `/rest/v1/permissoes?user_id=eq.${id}&select=chave,liberado`),
+    ])
+    const profile = Array.isArray(profs) && profs[0] ? profs[0] : null
+    res.json({ profile, permissoes: Array.isArray(perms) ? perms : [] })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
 app.post('/api/admin/criar-usuario', async (req, res) => {
   try {
     const { email, password, nome, empresa, role } = req.body

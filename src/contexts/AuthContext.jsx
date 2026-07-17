@@ -24,40 +24,28 @@ export function AuthProvider({ children }) {
   const [permSet,   setPermSet]    = useState(new Set())
 
   async function loadProfile(userId) {
-    const { data: prof, error: profErr } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-
-    if (profErr) console.error('[auth] erro ao carregar profile:', profErr.message)
+    // Carrega perfil + permissões pelo backend (service key ignora o RLS, que está
+    // com recursão na policy de profiles). Assim o usuário lê o perfil real.
+    let prof = null, perms = []
+    try {
+      const res = await fetch(`/api/me/${userId}`)
+      const data = await res.json()
+      prof  = data.profile || null
+      perms = data.permissoes || []
+    } catch (e) {
+      console.error('[auth] erro ao carregar perfil:', e.message)
+    }
 
     if (!prof) {
-      // Fallback: cria perfil básico se não existir (ex: trigger não rodou)
-      const { data: user } = await supabase.auth.getUser()
-      const fallback = {
-        id: userId,
-        nome: user?.user?.email || 'Usuário',
-        empresa: 'ambas',
-        role: 'admin',
-        ativo: true,
-      }
-      await supabase.from('profiles').upsert(fallback, { onConflict: 'id' })
-      setProfile(fallback)
-      setPermSet(new Set(PAGINAS.map(p => p.chave)))
+      // Sem perfil legível → acesso MÍNIMO (nunca admin). Um admin real libera depois.
+      setProfile({ id: userId, nome: 'Usuário', empresa: 'ambas', role: 'usuario', ativo: true })
+      setPermSet(new Set())
       return
     }
 
     setProfile(prof)
-
-    // Sempre busca as permissões — 'financeiro' é explícita (nem admin ganha
-    // automático); só entra no conjunto se liberada individualmente (ou p/ o Rafael).
-    const { data: perms } = await supabase
-      .from('permissoes')
-      .select('chave, liberado')
-      .eq('user_id', userId)
+    // 'financeiro' é explícita (nem admin ganha automático); só entra se liberada individualmente.
     const granted = new Set((perms || []).filter(p => p.liberado).map(p => p.chave))
-
     if (prof.role === 'admin') {
       const all = new Set(PAGINAS.map(p => p.chave))   // admin: acesso total às páginas normais
       if (granted.has('financeiro')) all.add('financeiro')
