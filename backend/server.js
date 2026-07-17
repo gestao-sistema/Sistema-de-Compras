@@ -121,13 +121,18 @@ function fotoUrl(raw, produto) {
   if (!raw) return null
   const s = String(raw).trim()
   if (!s) return null
+  let final = null
   if (s.startsWith('http')) {
     const clean = s.replace(/\\/g, '/').replace(/([^:])\/\/+/g, '$1/')
-    if (clean.endsWith('/')) return produto ? `${clean}${produto}.jpg` : null
-    return clean
+    final = clean.endsWith('/') ? (produto ? `${clean}${produto}.jpg` : null) : clean
+  } else {
+    const clean = s.replace(/\\/g, '/').replace(/^\/+/, '')
+    final = clean ? `${FOTO_BASE}/${clean}` : null
   }
-  const clean = s.replace(/\\/g, '/').replace(/^\/+/, '')
-  return clean ? `${FOTO_BASE}/${clean}` : null
+  // Fotos HTTP (ex.: Novitah) → passam pelo proxy do backend p/ evitar bloqueio de
+  // conteúdo misto no site HTTPS (e ganham cache). Fotos HTTPS (Alinare) ficam diretas.
+  if (final && final.startsWith('http://')) return '/api/img?u=' + encodeURIComponent(final)
+  return final
 }
 
 function parseDateBR(s) {
@@ -1068,6 +1073,31 @@ app.get('/api/produtos/options', async (req, res) => {
     const coresPedra  = dedupPrefixos(distinct(['cor'], 'corPedra'))
     res.json({ grupos, pedras, tag2s, categorias, fornecedores, banhos, coresPedra })
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Proxy de imagens SÓ para fotos HTTP (Novitah) — evita bloqueio de conteúdo misto no
+// site HTTPS. Busca cada imagem UMA vez do servidor de origem, guarda em disco e serve
+// com cache longo pela nossa origem (não re-baixa a cada acesso → não satura).
+const IMG_HOSTS_OK = new Set(['portalvps250.indepinfo.com.br'])
+const IMG_CACHE_DIR = require('path').join(CACHE_DIR, 'imgcache')
+app.get('/api/img', async (req, res) => {
+  try {
+    const fs = require('fs'), path = require('path'), crypto = require('crypto')
+    const u = String(req.query.u || '')
+    let parsed
+    try { parsed = new URL(u) } catch { return res.status(400).end() }
+    if (!IMG_HOSTS_OK.has(parsed.hostname)) return res.status(403).end()
+
+    const fp = path.join(IMG_CACHE_DIR, crypto.createHash('sha1').update(u).digest('hex') + '.img')
+    res.set('Cache-Control', 'public, max-age=31536000, immutable')
+    res.set('Content-Type', 'image/jpeg')   // navegador faz sniff se for png
+    if (fs.existsSync(fp)) return fs.createReadStream(fp).pipe(res)
+
+    const r = await axios.get(u, { responseType: 'arraybuffer', httpsAgent, timeout: 20000 })
+    const buf = Buffer.from(r.data)
+    try { fs.mkdirSync(IMG_CACHE_DIR, { recursive: true }); fs.writeFileSync(fp, buf) } catch (_) {}
+    res.send(buf)
+  } catch (e) { res.status(502).end() }
 })
 
 // Aplica visão de filial — sobrescreve _saldo/_saldoDisp/_valorEst conforme seleção

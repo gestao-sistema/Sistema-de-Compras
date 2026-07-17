@@ -29,15 +29,25 @@ async function loadLogo() {
 
 // Resumo + detalhe por SKU a partir das linhas filtradas
 function build(rows) {
-  const oss = new Map()   // codigoAssistencia -> statusOss
-  let entregue = 0, emdia = 0, atrasado = 0
+  const ossInfo = new Map()   // codigoAssistencia -> { fechada, aberta, atrasada }
   const det = []
+  // Itens (SKUs) por situação da OS
+  let itensEncerrados = 0, itensAbertosDia = 0, itensAbertosAtras = 0
   for (const r of rows || []) {
-    const cod = r.codigoAssistencia || r.osCliente
-    if (cod) oss.set(cod, r.statusOss || '')
-    if (r.statusServico === 'Entregue') entregue++
-    else if (r.statusServico === 'Em dia') emdia++
-    else if (r.statusServico === 'Atrasado') atrasado++
+    const st = r.statusOss || ''
+    const isFechada = /fechad/i.test(st)
+    const isAberta  = /abert/i.test(st)
+    // Detalhe (e contagem de itens): só o que está FECHADO ou ABERTO
+    if (!isFechada && !isAberta) continue
+    const cod = r.codigoAssistencia || r.osCliente || '—'
+    const info = ossInfo.get(cod) || { fechada: false, aberta: false, atrasada: false }
+    if (isFechada) { info.fechada = true; itensEncerrados++ }
+    else {
+      info.aberta = true
+      if (r.statusServico === 'Atrasado') { info.atrasada = true; itensAbertosAtras++ }
+      else itensAbertosDia++
+    }
+    ossInfo.set(cod, info)
     det.push({
       cliente:     r.clienteNome || '—',
       codAssist:   r.codigoAssistencia || r.osCliente || '—',
@@ -51,16 +61,21 @@ function build(rows) {
       prevEntrega: fData(r.prevEntrega),
     })
   }
-  let fechadas = 0, abertas = 0, outras = 0
-  for (const s of oss.values()) {
-    if (/fechad/i.test(s)) fechadas++
-    else if (/abert/i.test(s)) abertas++
-    else outras++
+  // Contagem por OS (uma OS encerrada tem precedência sobre aberta)
+  let osEncerradas = 0, osAbertas = 0, osAbertasAtrasadas = 0
+  for (const o of ossInfo.values()) {
+    if (o.fechada) osEncerradas++
+    else if (o.aberta) { osAbertas++; if (o.atrasada) osAbertasAtrasadas++ }
   }
   // Cliente(s) do relatório: nome quando é um só, senão a quantidade
   const clientes = new Set((rows || []).map(r => r.clienteNome).filter(Boolean))
   const clienteLabel = clientes.size === 1 ? [...clientes][0] : `${clientes.size} clientes`
-  return { totalOss: oss.size, fechadas, abertas, outras, entregue, emdia, atrasado, det, clienteLabel }
+  return {
+    totalOss: osEncerradas + osAbertas,
+    osEncerradas, osAbertas, osAbertasAtrasadas,
+    itensEncerrados, itensAbertosDia, itensAbertosAtras,
+    det, clienteLabel,
+  }
 }
 
 const HDR = ['Cliente', 'Cód. Assist.', 'SKU', 'Descrição', 'Qtd', 'Situação OS', 'Situação', 'Status do Serviço', 'Dt Entrada', 'Prev. Entrega']
@@ -102,21 +117,22 @@ export default function ExportAssistencias({ rows }) {
       }
 
       // Subtítulo: cliente + data de geração
-      ws.getRow(2).height = 16; merge(2, 1, COLS)
+      ws.getRow(2).height = 22; merge(2, 1, COLS)
       const s = ws.getCell(2, 1)
       s.value = `${r.clienteLabel}   ·   Gerado em ${geradoEm}`
-      s.font = { italic: true, size: 9, color: { argb: C.white } }
+      s.font = { bold: true, size: 13, color: { argb: C.white } }
       s.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.navy } }
       s.alignment = { horizontal: 'left', vertical: 'middle' }
 
       // ── Resumo ──
       const resumo = [
         ['Total de OSs', r.totalOss],
-        ['OS Entregues', r.fechadas],
-        ['OS Abertas', r.abertas],
-        ['Itens Entregue', r.entregue],
-        ['Itens Em dia', r.emdia],
-        ['Itens Atrasado', r.atrasado],
+        ['OS Encerradas', r.osEncerradas],
+        ['Itens Encerrados', r.itensEncerrados],
+        ['OS Abertas', r.osAbertas],
+        ['OS Abertas Atrasadas', r.osAbertasAtrasadas],
+        ['Itens Abertos em Dia', r.itensAbertosDia],
+        ['Itens Abertos Atrasados', r.itensAbertosAtras],
       ]
       let rowN = 4
       const rt = ws.getCell(rowN, 1); rt.value = 'RESUMO'
@@ -188,11 +204,11 @@ export default function ExportAssistencias({ rows }) {
         doc.text('Assistência Técnica', logo ? 50 : 10, 12)
         doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...LIGHT_RGB)
         doc.text('ALINARE', logo ? 50 : 10, 18)
-        // Cliente (topo, acima da data)
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255, 255, 255)
-        doc.text(r.clienteLabel, W - 10, 10, { align: 'right', maxWidth: W / 2 })
+        // Cliente (topo, destaque)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(255, 255, 255)
+        doc.text(r.clienteLabel, W - 10, 12, { align: 'right', maxWidth: W / 2 })
         doc.setFont('helvetica', 'normal'); doc.setTextColor(220, 220, 220); doc.setFontSize(7.5)
-        doc.text(`Gerado em ${geradoEm}`, W - 10, 16, { align: 'right' })
+        doc.text(`Gerado em ${geradoEm}`, W - 10, 19, { align: 'right' })
       }
       header()
 
@@ -201,16 +217,14 @@ export default function ExportAssistencias({ rows }) {
       doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...NAVY_RGB)
       doc.text('Resumo', 10, y); y += 3
 
-      // Total considera apenas Entregues + Abertas (ignora outros status de OS)
-      const totalOss = r.fechadas + r.abertas
-      const tiposOss = [r.fechadas, r.abertas].filter(n => n > 0).length
       const cards = [
-        ...(tiposOss >= 2 ? [['Total de OSs', fNum(totalOss), NAVY_RGB]] : []),
-        ...(r.fechadas > 0 ? [['OS Entregues', fNum(r.fechadas), [22, 163, 74]]] : []),
-        ...(r.abertas > 0 ? [['OS Abertas', fNum(r.abertas), [202, 138, 4]]] : []),
-        ['Itens Entregue', fNum(r.entregue), [22, 163, 74]],
-        ['Itens Em dia', fNum(r.emdia), [37, 99, 235]],
-        ['Itens Atrasado', fNum(r.atrasado), [185, 28, 28]],
+        ['Total de OSs', fNum(r.totalOss), NAVY_RGB],
+        ['OS Encerradas', fNum(r.osEncerradas), [22, 163, 74]],
+        ['Itens Encerrados', fNum(r.itensEncerrados), [22, 163, 74]],
+        ['OS Abertas', fNum(r.osAbertas), [202, 138, 4]],
+        ['OS Abertas Atrasadas', fNum(r.osAbertasAtrasadas), [185, 28, 28]],
+        ['Itens Abertos em Dia', fNum(r.itensAbertosDia), [37, 99, 235]],
+        ['Itens Abertos Atrasados', fNum(r.itensAbertosAtras), [185, 28, 28]],
       ]
       const cw = (W - 20) / cards.length, ch = 18
       cards.forEach((c, i) => {

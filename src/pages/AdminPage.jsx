@@ -173,6 +173,8 @@ export default function AdminPage() {
         const isAdmin   = u.role === 'admin'
         const permsUser = permissoes[u.id] || {}
         const aberto    = !!expandido[u.id]
+        const temFin    = !!permsUser['financeiro']
+        const paginasLib = isAdmin ? ['Todas as páginas'] : PAGINAS.filter(p => permsUser[p.chave]).map(p => p.label)
 
         return (
           <div key={u.id} className="card" style={{ padding:0, overflow:'hidden' }}>
@@ -190,11 +192,28 @@ export default function AdminPage() {
                 {u.nome?.charAt(0)?.toUpperCase()}
               </div>
 
-              {/* Nome e empresa */}
+              {/* Nome, empresa e resumo de acessos */}
               <div style={{ flex:1, minWidth:0 }}>
                 <div style={{ fontWeight:800, fontSize:14, color:'#e8eaf0' }}>{u.nome}</div>
                 <div style={{ fontSize:11, color:'#6b7280', marginTop:1 }}>
                   {isAdmin ? '⭐ Admin' : 'Usuário'} · {EMPRESAS.find(e => e.value === u.empresa)?.label || u.empresa}
+                </div>
+                {/* Chips do que o usuário tem acesso */}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:4, marginTop:6 }}>
+                  {temFin && (
+                    <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
+                      background:'rgba(245,197,24,0.14)', border:'1px solid rgba(245,197,24,0.5)', color:'#f5c518' }}>
+                      💰 Contas a Receber
+                    </span>
+                  )}
+                  {paginasLib.length > 0 ? paginasLib.map(l => (
+                    <span key={l} style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20,
+                      background:'rgba(74,222,128,0.10)', border:'1px solid rgba(74,222,128,0.3)', color:'#7ee2a8' }}>
+                      {l}
+                    </span>
+                  )) : (!temFin && (
+                    <span style={{ fontSize:10, color:'#6b7280' }}>Sem acesso a nenhuma página</span>
+                  ))}
                 </div>
               </div>
 

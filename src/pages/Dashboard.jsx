@@ -118,9 +118,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="page-body space-y-4">
-        {/* KPIs */}
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
+      <div style={{ height: '100vh', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', padding: '60px 32px 16px', gap: 14, overflow: 'hidden' }}>
+        {/* KPIs (fixos no topo) */}
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(5, 1fr)', flexShrink: 0 }}>
           <KPICard label="Saldo Atual"  value={fNum(d.saldoEstoque)}      sub="Estoque Atual"                    color="var(--text)" />
           <KPICard label="Disponível"   value={fNum(d.saldoDisponivel)}   sub="Estoque Disponível"               color="#00b4d8" />
           <KPICard label="Estoque"      value={fBRL(d.valorEstoque)}      sub="preço venda × qtd"                color="#a3e635" />
@@ -129,9 +129,9 @@ export default function Dashboard() {
         </div>
 
         {/* Tabela */}
-        <div className="card">
+        <div className="card" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {/* Tabs */}
-          <div className="flex items-center gap-3 mb-3 flex-wrap">
+          <div className="flex items-center gap-3 mb-3 flex-wrap" style={{ flexShrink: 0 }}>
             <DrillTab label="GRUPO"         id="grupo"   active={tab} onClick={changeTab} />
             <DrillTab label="TIPO DE PEDRA" id="pedra"   active={tab} onClick={changeTab} />
             <DrillTab label="TAG 2"         id="tag2"    active={tab} onClick={changeTab} />
@@ -154,7 +154,7 @@ export default function Dashboard() {
 
           {/* Filtros extras — só na aba PRODUTO */}
           {tab === 'produto' && (
-            <div className="flex flex-wrap items-end gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)' }}>
+            <div className="flex flex-wrap items-end gap-3 mb-4 pb-4" style={{ borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
               {/* Tipo */}
               <div>
                 <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>Tipo</div>
@@ -271,23 +271,25 @@ export default function Dashboard() {
             </div>
           )}
 
-          {!loaded && <div className="state-box"><p>Aguardando carregamento do catálogo…</p></div>}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {!loaded && <div className="state-box"><p>Aguardando carregamento do catálogo…</p></div>}
 
-          {loaded && tab !== 'produto' && groupQ.isLoading && (
-            <div className="state-box"><div className="spinner" /><p>Carregando {TAB_LABEL[tab]}…</p></div>
-          )}
+            {loaded && tab !== 'produto' && groupQ.isLoading && (
+              <div className="state-box"><div className="spinner" /><p>Carregando {TAB_LABEL[tab]}…</p></div>
+            )}
 
-          {loaded && tab !== 'produto' && !groupQ.isLoading && (
-            <TabelaGrupo rows={groupRows} label={TAB_LABEL[tab]} isFetching={groupQ.isFetching} />
-          )}
+            {loaded && tab !== 'produto' && !groupQ.isLoading && (
+              <TabelaGrupo rows={groupRows} label={TAB_LABEL[tab]} isFetching={groupQ.isFetching} />
+            )}
 
-          {loaded && tab === 'produto' && (
-            <TabelaProdutos
-              rows={listRows} total={listTotal} page={page} totalPages={totalPages}
-              sortK={sortK} sortD={sortD} onSort={changeSort} onPage={setPage}
-              isFetching={listQ.isFetching}
-            />
-          )}
+            {loaded && tab === 'produto' && (
+              <TabelaProdutos
+                rows={listRows} total={listTotal} page={page} totalPages={totalPages}
+                sortK={sortK} sortD={sortD} onSort={changeSort} onPage={setPage}
+                isFetching={listQ.isFetching}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -341,8 +343,8 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
   }
 
   return (
-    <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
-      <div className="tbl-scroll">
+    <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <div className="tbl-scroll" style={{ flex: 1, minHeight: 0, maxHeight: 'none' }}>
         <table className="tbl tbl-sku" style={{ tableLayout: 'fixed', width: '100%' }}>
           <colgroup>
             <col style={{ width: 80 }} />{/* Grupo */}
@@ -476,7 +478,7 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
         </div>
       )}
 
-      <div className="flex items-center justify-between px-1 mt-3">
+      <div className="flex items-center justify-between px-1 mt-3" style={{ flexShrink: 0 }}>
         <p className="text-xs" style={{ color: 'var(--text-dim)' }}>
           {total > 0
             ? `${(page * PAGE_LIMIT + 1).toLocaleString('pt-BR')}–${Math.min((page + 1) * PAGE_LIMIT, total).toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')} produtos`

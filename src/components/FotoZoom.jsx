@@ -11,30 +11,39 @@ function proxyUrl(url) {
   return url
 }
 
+const Placeholder = ({ size }) => (
+  <div style={{ width: size, height: size, background: '#20223a', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a3f5c' }}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+    </svg>
+  </div>
+)
+
 export default function FotoZoom({ url, alt, size = 40 }) {
-  const src = proxyUrl(url)
-  const [visible, setVisible] = useState(!!url)
-  const [pos,     setPos]     = useState(null)
+  const base = proxyUrl(url)
+  // status: 'loading' | 'ok' | 'error' ; tries = tentativas de recarga em falha transitória
+  const [status, setStatus] = useState(url ? 'loading' : 'none')
+  const [tries,  setTries]  = useState(0)
+  const [pos,    setPos]    = useState(null)
 
-  // Reseta o estado quando a URL muda (ex.: linha reaproveitada ao reordenar a tabela) —
-  // sem isso, um erro de carga de um produto anterior "grudava" e escondia a foto do novo.
-  useEffect(() => { setVisible(!!url) }, [url])
+  // Reseta quando a URL muda (linha reaproveitada ao reordenar a tabela)
+  useEffect(() => { setStatus(url ? 'loading' : 'none'); setTries(0) }, [url])
 
-  if (!url || !visible) return (
-    <div style={{ width: size, height: size, background: '#20223a', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a3f5c' }}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
-      </svg>
-    </div>
-  )
+  if (!url || status === 'error') return <Placeholder size={size} />
+
+  // Em falha transitória, tenta recarregar até 2x (cache-bust só nas retentativas)
+  const src = tries > 0 ? `${base}${base.includes('?') ? '&' : '?'}r=${tries}` : base
+  const onError = () => setTries(t => { if (t >= 2) { setStatus('error'); return t } return t + 1 })
+
   return (
     <div className="foto-zoom-container"
       onMouseEnter={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setPos(null)}
     >
-      <img src={src} alt={alt} loading="lazy" style={{ width: size, height: size, objectFit: 'cover', borderRadius: 6, background: '#20223a', display: 'block' }}
-        onError={() => setVisible(false)} />
+      <img src={src} alt={alt} loading="lazy" decoding="async" width={size} height={size}
+        style={{ width: size, height: size, objectFit: 'cover', borderRadius: 6, background: '#20223a', display: 'block' }}
+        onLoad={() => setStatus('ok')} onError={onError} />
       {pos && (
         <div className="foto-zoom-popup" style={{ left: pos.x + 16, top: Math.min(pos.y - 110, window.innerHeight - 230) }}>
           <img src={src} alt={alt} style={{ width: 200, height: 200, objectFit: 'contain', display: 'block', borderRadius: 6 }} />

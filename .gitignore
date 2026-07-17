@@ -13,3 +13,4 @@ shots.mjs
 *.local
 *.bak
 URLS.txt
+backend/imgcache/
