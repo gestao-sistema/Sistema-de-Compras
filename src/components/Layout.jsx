@@ -44,10 +44,18 @@ export default function Layout() {
     }
   }, [empresa, qc])
 
+  // Primeira página que o usuário pode acessar na empresa informada
+  function primeiraRota(emp) {
+    let nav = NAV.filter(n => n.to === '/financeiro' ? podeFinanceiro : podeVer(n.chave))
+    if (emp === 'novitah') nav = nav.filter(n => NAV_NOVITAH.includes(n.chave))
+    return nav[0]?.to || '/'
+  }
+
   function trocarEmpresa(e) {
     if (e === empresa) return
     setEmpresa(e)
-    navigate('/', { replace: true })
+    // vai direto para uma página que existe/é acessível (evita "Acesso negado")
+    navigate(primeiraRota(e), { replace: true })
   }
 
   const podeAmbas = profile?.empresa === 'ambas'
