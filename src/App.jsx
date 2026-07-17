@@ -7,6 +7,8 @@ import Dashboard from './pages/Dashboard'
 import SugestoesPage from './pages/SugestoesPage'
 import ComprasPage from './pages/ComprasPage'
 import FinanceiroPage from './pages/FinanceiroPage'
+import ClienteDetalhePage from './pages/ClienteDetalhePage'
+import VendedorDetalhePage from './pages/VendedorDetalhePage'
 import AssistenciasPage from './pages/AssistenciasPage'
 import PedidosPage from './pages/PedidosPage'
 import FornecedorPage from './pages/FornecedorPage'
@@ -40,6 +42,8 @@ function AppRoutes() {
         <Route path="pedidos"      element={<PrivateRoute chave="pedidos"><PedidosPage /></PrivateRoute>} />
         <Route path="fornecedores" element={<PrivateRoute chave="fornecedores"><FornecedorPage /></PrivateRoute>} />
         <Route path="financeiro"   element={<PrivateRoute chave="clientes" soFinanceiro><FinanceiroPage /></PrivateRoute>} />
+        <Route path="financeiro/cliente/:codigo" element={<PrivateRoute chave="clientes" soFinanceiro><ClienteDetalhePage /></PrivateRoute>} />
+        <Route path="financeiro/vendedor/:codigo" element={<PrivateRoute chave="clientes" soFinanceiro><VendedorDetalhePage /></PrivateRoute>} />
         <Route path="assistencias" element={<PrivateRoute chave="assistencias"><AssistenciasPage /></PrivateRoute>} />
         <Route path="admin"        element={<PrivateRoute><AdminPage /></PrivateRoute>} />
         <Route path="*"            element={<Navigate to="/" replace />} />

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import ExportFinanceiro from '../components/ExportFinanceiro'
@@ -42,6 +43,7 @@ function hoverHandlers(setHover, ent) {
 }
 
 export default function FinanceiroPage() {
+  const navigate = useNavigate()
   const [hover, setHover]   = useState(null)   // { cliente, x, y }
   const [expV, setExpV]     = useState(null)   // key do vendedor expandido
 
@@ -191,7 +193,7 @@ export default function FinanceiroPage() {
                               color: topo ? '#1a1a1a' : 'var(--text-muted)',
                               border: topo ? 'none' : '1px solid var(--border)',
                             }}>{rank}</span>
-                            <div style={{ minWidth: 0 }}>
+                            <div style={{ minWidth: 0, flex: 1 }}>
                               <div style={{ color: 'var(--text)', fontWeight: 700, fontSize: 13 }}>
                                 <span style={{ color: 'var(--accent-title, var(--accent))', marginRight: 6, fontSize: 11 }}>{aberto ? '▼' : '▶'}</span>
                                 {v.nome}
@@ -201,6 +203,18 @@ export default function FinanceiroPage() {
                                 {(v.modalidades || []).length > 0 && ' · passe o mouse p/ modalidades'}
                               </div>
                             </div>
+                            {v.codigo && (
+                              <button
+                                onClick={e => { e.stopPropagation(); navigate(`/financeiro/vendedor/${v.codigo}`) }}
+                                title="Abrir ficha completa da vendedora"
+                                style={{
+                                  flexShrink: 0, fontSize: 10.5, fontWeight: 700, padding: '4px 11px', borderRadius: 6,
+                                  border: '1px solid var(--accent-title, var(--accent))', background: 'transparent',
+                                  color: 'var(--accent-title, var(--accent))', cursor: 'pointer', whiteSpace: 'nowrap',
+                                }}>
+                                Ficha ↗
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td style={{ textAlign: 'center', color: '#93c5fd', fontWeight: 800, fontFamily: 'monospace' }}>{fMoeda(v.total)}</td>
@@ -265,6 +279,7 @@ export default function FinanceiroPage() {
 
 // Clientes de um vendedor — cada cliente expande em suas contas
 function ClientesVendedor({ clientes, vkey, vnome, setHover }) {
+  const navigate = useNavigate()
   const [expC, setExpC] = useState(null)
   const lista = [...(clientes || [])].sort((a, b) => b.total - a.total)
   const subHeadStyle = { textAlign: 'center', padding: '5px 8px', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#7b8496', whiteSpace: 'nowrap' }
@@ -300,11 +315,27 @@ function ClientesVendedor({ clientes, vkey, vnome, setHover }) {
                 onClick={() => setExpC(open ? null : key)}
                 style={{ cursor: 'pointer', borderBottom: '1px solid var(--border)', background: open ? 'var(--bg-hover)' : undefined }}>
                 <td style={{ padding: '5px 8px 5px 40px', overflow: 'hidden' }}>
-                  <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <span style={{ color: 'var(--accent-title, var(--accent))', marginRight: 6, fontSize: 10 }}>{open ? '▼' : '▶'}</span>
-                    {c.nome}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <span style={{ color: 'var(--accent-title, var(--accent))', marginRight: 6, fontSize: 10 }}>{open ? '▼' : '▶'}</span>
+                        {c.nome}
+                      </div>
+                      <div style={{ color: AMARELO, fontSize: 10, fontFamily: 'monospace', marginLeft: 16 }}>#{c.codigo} · {fNum(contas.length)} conta{contas.length === 1 ? '' : 's'}</div>
+                    </div>
+                    {c.codigo && (
+                      <button
+                        onClick={e => { e.stopPropagation(); navigate(`/financeiro/cliente/${c.codigo}`) }}
+                        title="Abrir ficha completa do cliente"
+                        style={{
+                          flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 6,
+                          border: '1px solid var(--accent-title, var(--accent))', background: 'transparent',
+                          color: 'var(--accent-title, var(--accent))', cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}>
+                        Ficha ↗
+                      </button>
+                    )}
                   </div>
-                  <div style={{ color: AMARELO, fontSize: 10, fontFamily: 'monospace', marginLeft: 16 }}>#{c.codigo} · {fNum(contas.length)} conta{contas.length === 1 ? '' : 's'}</div>
                 </td>
                 <td style={{ padding: '5px 8px', textAlign: 'center', color: '#93c5fd', fontWeight: 700, fontFamily: 'monospace', fontSize: 12 }}>{fMoeda(c.total)}</td>
                 <td style={{ padding: '5px 8px', textAlign: 'center', color: c.notaCredito ? '#f472b6' : 'var(--text-dim)', fontWeight: c.notaCredito ? 700 : 400, fontFamily: 'monospace', fontSize: 12 }}>{c.notaCredito ? fMoeda(c.notaCredito) : '—'}</td>

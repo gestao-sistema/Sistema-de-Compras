@@ -113,6 +113,14 @@
   .kpi-value { @apply text-3xl font-black tracking-tight mt-1; color: var(--text); }
   .kpi-sub   { @apply text-xs mt-1; color: var(--text-muted); }
 
+  /* título de seção (ficha do cliente e afins) */
+  .sec-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-title, var(--accent)); margin-bottom: 10px; }
+
+  /* tabela SKU compacta — cabe na tela sem rolagem horizontal:
+     menos padding e cabeçalho que quebra em 2 linhas (em vez de cortar) */
+  .tbl-sku thead th { white-space: normal; padding-left: 8px; padding-right: 8px; line-height: 1.15; vertical-align: bottom; }
+  .tbl-sku tbody td { padding-left: 8px; padding-right: 8px; }
+
   /* ── table ── */
   .tbl-wrap   { @apply overflow-x-auto w-full; }
   .tbl-scroll { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 360px); }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 // Carrega a foto DIRETO do servidor (o proxy do backend saturava na Railway).
 // Desembrulha URLs antigas no formato /api/image-proxy?url=...
@@ -15,6 +15,10 @@ export default function FotoZoom({ url, alt, size = 40 }) {
   const src = proxyUrl(url)
   const [visible, setVisible] = useState(!!url)
   const [pos,     setPos]     = useState(null)
+
+  // Reseta o estado quando a URL muda (ex.: linha reaproveitada ao reordenar a tabela) —
+  // sem isso, um erro de carga de um produto anterior "grudava" e escondia a foto do novo.
+  useEffect(() => { setVisible(!!url) }, [url])
 
   if (!url || !visible) return (
     <div style={{ width: size, height: size, background: '#20223a', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3a3f5c' }}>

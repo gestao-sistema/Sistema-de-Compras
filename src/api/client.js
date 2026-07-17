@@ -33,6 +33,8 @@ export const api = {
   assistenciaItens: (id, cpfcnpj)   => get(`/blip/assistencia/itens/${id}`, { cpfcnpj }),
   assistenciasGeral:(status)         => get('/assistencias/geral', { status }),
   financeiro:       (params)         => get('/financeiro', params),
+  financeiroCliente:(codigo, params) => get('/financeiro/cliente', { codigo, ...params }),
+  financeiroVendedor:(codigo, params)=> get('/financeiro/vendedor', { codigo, ...params }),
   alertas:          ()               => get('/alertas'),
 }
 

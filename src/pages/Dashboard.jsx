@@ -3,6 +3,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import { BadgeDDE } from '../components/Badge'
 import FilialSelector from '../components/FilialSelector'
+import MultiCombo from '../components/MultiCombo'
 
 const PAGE_LIMIT = 100
 const TAB_LABEL  = { grupo: 'Grupo', pedra: 'Tipo de Pedra', tag2: 'TAG 2' }
@@ -15,6 +16,8 @@ export default function Dashboard() {
   const [rupturaFilter, setRupturaFilter] = useState('')
   const [grupoFilter, setGrupoFilter] = useState('')
   const [pedraFilter, setPedraFilter] = useState('')
+  const [corFilter,   setCorFilter]   = useState([])
+  const [banhoFilter, setBanhoFilter] = useState('')
   const [tag2Filter,  setTag2Filter]  = useState('')
   const [fornFilter,   setFornFilter]   = useState('')
   const [catFilter,    setCatFilter]    = useState('')
@@ -45,13 +48,13 @@ export default function Dashboard() {
     setPage(0)
   }
   function resetFilters() {
-    setGrupoFilter(''); setPedraFilter(''); setTag2Filter(''); setFornFilter(''); setCatFilter('')
+    setGrupoFilter(''); setPedraFilter(''); setCorFilter([]); setBanhoFilter(''); setTag2Filter(''); setFornFilter(''); setCatFilter('')
     setEstoqueFilter(''); setFilialFilter(''); setCodigoFilter(''); setSearch(''); setTipoFilter('todos'); setRupturaFilter(''); setPage(0)
   }
 
   const kpi = useQuery({
-    queryKey:        ['dashboard', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, fornFilter, estoqueFilter, filialFilter],
-    queryFn:         () => api.dashboard({ search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, fornecedor: fornFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
+    queryKey:        ['dashboard', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, corFilter, banhoFilter, tag2Filter, fornFilter, estoqueFilter, filialFilter],
+    queryFn:         () => api.dashboard({ search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, cor: corFilter.join('|'), banho: banhoFilter, tag2: tag2Filter, fornecedor: fornFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
     refetchInterval: d => d?.loading === false ? false : 3000,
     staleTime:       30000,
     placeholderData: keepPreviousData,
@@ -61,25 +64,25 @@ export default function Dashboard() {
   const loaded = d.loading === false
 
   const optionsQ = useQuery({
-    queryKey:        ['produtos-options', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter],
-    queryFn:         () => api.produtosOptions({ search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
+    queryKey:        ['produtos-options', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, corFilter, banhoFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter],
+    queryFn:         () => api.produtosOptions({ search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, cor: corFilter.join('|'), banho: banhoFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
     enabled:         loaded,
     staleTime:       30000,
     placeholderData: keepPreviousData,
   })
-  const opts = optionsQ.data || { grupos: [], pedras: [], tag2s: [], categorias: [] }
+  const opts = optionsQ.data || { grupos: [], pedras: [], tag2s: [], categorias: [], banhos: [], coresPedra: [] }
 
   const groupQ = useQuery({
-    queryKey:        ['produtos-group', tab, dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter],
-    queryFn:         () => api.produtos({ view: tab, search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
+    queryKey:        ['produtos-group', tab, dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, corFilter, banhoFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter],
+    queryFn:         () => api.produtos({ view: tab, search: dbSearch, codigo: dbCodigo, tipo: tipoFilter, ruptura: rupturaFilter || undefined, grupo: grupoFilter, pedra: pedraFilter, cor: corFilter.join('|'), banho: banhoFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
     enabled:         loaded && tab !== 'produto',
     staleTime:       30000,
     placeholderData: keepPreviousData,
   })
 
   const listQ = useQuery({
-    queryKey:        ['produtos-list', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter, page, sortK, sortD],
-    queryFn:         () => api.produtos({ view: 'list', page, limit: PAGE_LIMIT, sort: sortK, dir: sortD, search: dbSearch, tipo: tipoFilter, grupo: grupoFilter, pedra: pedraFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, codigo: dbCodigo, ruptura: rupturaFilter || undefined, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
+    queryKey:        ['produtos-list', dbSearch, dbCodigo, tipoFilter, rupturaFilter, grupoFilter, pedraFilter, corFilter, banhoFilter, tag2Filter, fornFilter, catFilter, estoqueFilter, filialFilter, page, sortK, sortD],
+    queryFn:         () => api.produtos({ view: 'list', page, limit: PAGE_LIMIT, sort: sortK, dir: sortD, search: dbSearch, tipo: tipoFilter, grupo: grupoFilter, pedra: pedraFilter, cor: corFilter.join('|'), banho: banhoFilter, tag2: tag2Filter, fornecedor: fornFilter, categoria: catFilter, codigo: dbCodigo, ruptura: rupturaFilter || undefined, estoque: estoqueFilter || undefined, filial: filialFilter || undefined }),
 
     enabled:         loaded && tab === 'produto',
     staleTime:       30000,
@@ -98,7 +101,7 @@ export default function Dashboard() {
   const totalRuptura = listQ.data?.totalRuptura   ?? 0
   const totalPages = Math.ceil(listTotal / PAGE_LIMIT)
 
-  const hasFilters = grupoFilter || pedraFilter || tag2Filter || fornFilter || catFilter || estoqueFilter || filialFilter || codigoFilter || dbSearch || tipoFilter !== 'todos' || rupturaFilter !== ''
+  const hasFilters = grupoFilter || pedraFilter || corFilter.length || banhoFilter || tag2Filter || fornFilter || catFilter || estoqueFilter || filialFilter || codigoFilter || dbSearch || tipoFilter !== 'todos' || rupturaFilter !== ''
 
   return (
     <div>
@@ -185,6 +188,21 @@ export default function Dashboard() {
                 <select value={pedraFilter} onChange={e => { setPedraFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 160 }}>
                   <option value="">Todas</option>
                   {opts.pedras.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+
+              {/* Cor da Pedra (muitos valores reais → combo com busca e multi-seleção) */}
+              <div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>Cor da Pedra</div>
+                <MultiCombo value={corFilter} onChange={v => { setCorFilter(v); setPage(0) }} options={opts.coresPedra || []} placeholder="Todas" width={150} />
+              </div>
+
+              {/* Banho */}
+              <div>
+                <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--accent-title, var(--accent))' }}>Banho</div>
+                <select value={banhoFilter} onChange={e => { setBanhoFilter(e.target.value); setPage(0) }} className="inp text-xs" style={{ minWidth: 130 }}>
+                  <option value="">Todos</option>
+                  {(opts.banhos || []).map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
 
@@ -310,6 +328,7 @@ function KPICard({ label, value, sub, color, delta }) {
 // ─── Tabela produtos ──────────────────────────────────────────────────────────
 
 function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, onPage, isFetching }) {
+  const [skuHover, setSkuHover] = useState(null)   // { row, x, y }
   function TH({ k, label, align = 'left' }) {
     return (
       <th onClick={() => onSort(k)} style={{ textAlign: align, cursor: 'pointer', userSelect: 'none' }}
@@ -324,32 +343,40 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
   return (
     <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
       <div className="tbl-scroll">
-        <table className="tbl" style={{ tableLayout: 'fixed', width: '100%' }}>
+        <table className="tbl tbl-sku" style={{ tableLayout: 'fixed', width: '100%' }}>
           <colgroup>
-            <col style={{ width: 78 }} />
-            <col style={{ width: 100 }} />
-            <col style={{ width: 80 }} />
-            <col style={{ width: 125 }} />
-            <col style={{ width: 175 }} />
-            <col style={{ width: 78 }} />
-            <col style={{ width: 95 }} />
-            <col style={{ width: 85 }} />
-            <col style={{ width: 65 }} />
-            <col style={{ width: 65 }} />
-            <col style={{ width: 70 }} />
-            <col style={{ width: 105 }} />
-            <col style={{ width: 85 }} />
+            <col style={{ width: 80 }} />{/* Grupo */}
+            <col style={{ width: 120 }} />{/* TP Pedra */}
+            <col style={{ width: 95 }} />{/* Cor da Pedra */}
+            <col style={{ width: 92 }} />{/* Banho */}
+            <col style={{ width: 82 }} />{/* TAG2 */}
+            <col style={{ width: 118 }} />{/* Fornecedor */}
+            <col style={{ width: 170 }} />{/* SKU */}
+            <col style={{ width: 74 }} />{/* Estoque */}
+            <col style={{ width: 90 }} />{/* Disponível */}
+            <col style={{ width: 74 }} />{/* Pedidos */}
+            <col style={{ width: 80 }} />{/* Vend30 */}
+            <col style={{ width: 88 }} />{/* Histórico de Venda */}
+            <col style={{ width: 62 }} />{/* Saída */}
+            <col style={{ width: 58 }} />{/* DDE */}
+            <col style={{ width: 58 }} />{/* Giro */}
+            <col style={{ width: 90 }} />{/* Ruptura */}
+            <col style={{ width: 74 }} />{/* PV UN */}
           </colgroup>
           <thead>
             <tr>
               <TH k="grupo"       label="Grupo" />
-              <TH k="pedra"       label="Tipo de Pedra" />
+              <TH k="pedra"       label="TP Pedra" />
+              <TH k="corPedra"    label="Cor da Pedra" />
+              <TH k="banho"       label="Banho" />
               <TH k="tag2"        label="TAG 2" />
               <TH k="nomeFornecedor" label="Fornecedor" />
               <TH k="descricao"   label="SKU" />
               <TH k="_saldo"      label="Estoque"     align="center" />
               <TH k="_saldoDisp"  label="Disponível"  align="center" />
+              <TH k="_pedidoQtd"  label="Pedidos"     align="center" />
               <TH k="_vend30"     label="Vend. 30D"   align="center" />
+              <TH k="_vendida"    label="Hist. Venda" align="center" />
               <TH k="_taxaSaida"  label="Saída"       align="center" />
               <TH k="_dde"        label="DDE"         align="center" />
               <TH k="_giro"       label="Giro"        align="center" />
@@ -359,12 +386,14 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
           </thead>
           <tbody>
             {rows.length === 0 && !isFetching && (
-              <tr><td colSpan={13}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
+              <tr><td colSpan={17}><div className="state-box text-sm">Nenhum produto encontrado</div></td></tr>
             )}
             {rows.map((row, i) => (
-              <tr key={i}>
-                <td style={{ color: '#fff', fontWeight: 700, fontSize: 12 }}>{row.grupo ?? '-'}</td>
-                <td style={{ color: '#00b4d8', fontSize: 12 }}>{row.pedra || '-'}</td>
+              <tr key={row.produto || i}>
+                <td style={{ color: '#fff', fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.grupo}>{row.grupo ?? '-'}</td>
+                <td style={{ color: '#00b4d8', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.pedra}>{row.pedra || '-'}</td>
+                <td style={{ color: '#7dd3fc', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.corPedra}>{row.corPedra || '-'}</td>
+                <td style={{ color: '#c084fc', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.banho}>{row.banho || '-'}</td>
                 <td style={{ color: '#f5c518', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.tag2}>{row.tag2 || '-'}</td>
                 <td style={{ color: 'var(--accent-title, #f5c518)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.nomeFornecedor}>{row.nomeFornecedor || '-'}</td>
                 <td>
@@ -378,6 +407,9 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
                         <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, flexShrink: 0, background: row.isNovo ? '#14532d' : '#1e3a5f', color: row.isNovo ? '#4ade80' : '#60a5fa' }}>
                           {row.isNovo ? 'NOVO' : 'REP'}
                         </span>
+                        {row._pedidoQtd > 0 && (
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 4px', borderRadius: 3, flexShrink: 0, background: '#3b2a06', color: '#fbbf24' }} title="Este SKU tem pedido de compra em aberto">📦</span>
+                        )}
                       </div>
                       <div style={{ color: 'var(--text-dim)', fontSize: 11 }}>{row.produtoBase} › {row.produto}</div>
                     </div>
@@ -385,8 +417,18 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
                 </td>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace' }}>{fNum(row._saldo)}</td>
                 <td style={{ textAlign: 'center', fontFamily: 'monospace', color: '#00b4d8' }}>{fNum(row._saldoDisp)}</td>
+                <td
+                  onMouseEnter={row._pedidoQtd > 0 ? e => setSkuHover({ row, x: e.clientX, y: e.clientY }) : undefined}
+                  onMouseMove={row._pedidoQtd > 0 ? e => setSkuHover(h => (h && h.row === row ? { ...h, x: e.clientX, y: e.clientY } : h)) : undefined}
+                  onMouseLeave={() => setSkuHover(null)}
+                  style={{ textAlign: 'center', fontFamily: 'monospace', cursor: row._pedidoQtd > 0 ? 'help' : undefined }}>
+                  {row._pedidoQtd > 0 ? <span style={{ color: '#fbbf24', fontWeight: 700 }}>{fNum(row._pedidoQtd)}</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
+                </td>
                 <td style={{ textAlign: 'center' }}>
                   {row._vend30 > 0 ? <span style={{ color: '#4ade80', fontWeight: 700 }}>{fNum(row._vend30)}</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
+                </td>
+                <td style={{ textAlign: 'center', fontFamily: 'monospace' }}>
+                  {row._vendida > 0 ? <span style={{ color: '#22d3ee', fontWeight: 700 }}>{fNum(row._vendida)}</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
                 </td>
                 <td style={{ textAlign: 'center' }}>
                   {row._taxaSaida > 0 ? <span style={{ color: '#4ade80' }}>{row._taxaSaida.toFixed(1)}%</span> : <span style={{ color: 'var(--text-dim)' }}>-</span>}
@@ -402,6 +444,37 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
           </tbody>
         </table>
       </div>
+
+      {/* Tooltip do SKU — pedidos de compra em aberto (a fonte não tem data de chegada) */}
+      {skuHover && (skuHover.row._pedidos || []).length > 0 && (
+        <div style={{
+          position: 'fixed', zIndex: 99999, pointerEvents: 'none',
+          left: Math.min(skuHover.x + 16, window.innerWidth - 320),
+          top: Math.min(skuHover.y + 12, window.innerHeight - 40 - Math.min(skuHover.row._pedidos.length, 8) * 34 - 60),
+          background: 'var(--bg-card)', border: '1px solid var(--accent-title, var(--accent))',
+          borderRadius: 10, padding: '10px 12px', minWidth: 260, maxWidth: 340,
+          boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+            📦 Em pedido de compra · {fNum(skuHover.row._pedidoQtd)} un
+          </div>
+          {skuHover.row._pedidos.slice(0, 8).map((p, k) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 5, alignItems: 'baseline' }}>
+              <span style={{ overflow: 'hidden' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace' }}>#{p.pedido}</span>
+                <span style={{ fontSize: 10.5, color: '#c084fc', fontWeight: 600, marginLeft: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.fornecedor || '—'}</span>
+              </span>
+              <span style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fbbf24', fontFamily: 'monospace' }}>{fNum(p.qtd)} un</span>
+                <span style={{ fontSize: 10, color: '#7dd3fc', marginLeft: 6, fontFamily: 'monospace' }}>emitido {p.emissao || '—'}</span>
+              </span>
+            </div>
+          ))}
+          {skuHover.row._pedidos.length > 8 && (
+            <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>+{skuHover.row._pedidos.length - 8} pedido(s)…</div>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between px-1 mt-3">
         <p className="text-xs" style={{ color: 'var(--text-dim)' }}>

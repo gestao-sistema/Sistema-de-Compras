@@ -229,7 +229,7 @@ async function fetchAllCompras(emp = 'alinare') {
 
 // ─── Expande variacoes em linhas individuais ──────────────────────────────────
 
-function expandVariacoes(parents) {
+function expandVariacoes(parents, emp = 'alinare') {
   const rows = []
   parents.forEach(pai => {
     // Descarta apenas grupos que não são produto (certificado, sem grupo)
@@ -237,16 +237,97 @@ function expandVariacoes(parents) {
     if (GRUPOS_EXCLUIR.has(grupoPai)) return
 
     const variacoes = pai.variacoes || []
-    if (variacoes.length === 0) { rows.push(buildRow(pai, null)); return }
+    if (variacoes.length === 0) { rows.push(buildRow(pai, null, emp)); return }
     variacoes.forEach(v => {
       const grupoV = (v.grupo || grupoPai).toUpperCase().trim()
-      if (!GRUPOS_EXCLUIR.has(grupoV)) rows.push(buildRow(pai, v))
+      if (!GRUPOS_EXCLUIR.has(grupoV)) rows.push(buildRow(pai, v, emp))
     })
   })
   return rows
 }
 
-function buildRow(pai, v) {
+// Metais que encerram a descrição base — âncora p/ achar onde começam os atributos.
+const METAIS_DESC = ['PRATA', 'OURO', 'AÇO INOX', 'ACO INOX', 'AÇO', 'ACO', 'INOX', 'LATÃO', 'LATAO', 'BRONZE']
+// Cores de pedra conhecidas (p/ normalizar — a fonte trunca a descrição em tamanhos variados)
+const CORES_PEDRA = ['ÁGUA MARINHA', 'AGUA MARINHA', 'AZUL MARINHO', 'VERDE AGUA', 'ROSA CLARO',
+  'BRANCA', 'BRANCO', 'PRETA', 'PRETO', 'AZUL', 'VERDE', 'VERMELHA', 'VERMELHO', 'ROSA', 'AMARELA',
+  'AMARELO', 'ROXA', 'ROXO', 'LILAS', 'LILÁS', 'FUME', 'FUMÊ', 'CHAMPAGNE', 'RUBI', 'SAFIRA',
+  'ESMERALDA', 'TURQUESA', 'AMETISTA', 'CITRINO', 'TOPAZIO', 'TOPÁZIO', 'MULTICOR', 'COLORIDA',
+  'COLORIDO', 'CHOCOLATE', 'CORAL', 'TIFANY', 'TIFFANY', 'CRISTAL', 'PEROLA', 'PÉROLA']
+
+// Códigos/lixo que aparecem no lugar da cor e não são cor de pedra
+const COR_LIXO = new Set(['ZB', 'ZP', 'LIS', 'ESM', 'RBW', 'RB', 'NA', 'N/A', 'N', 'A', 'S', 'SEM INFO'])
+// Usa o valor REAL do trecho da cor (mostra COLOMBIANA, TANZANITA, etc.), só limpando ruído.
+// SEM PEDRA é normalizado; códigos curtos e "N/A" viram vazio.
+function canonCor(txt) {
+  const t = String(txt || '').trim().toUpperCase()
+  if (!t) return ''
+  if (/SEM\s*PEDRA/.test(t)) return 'SEM PEDRA'   // mostra "SEM PEDRA" no campo cor
+  if (t.length <= 2 || t.length > 22 || COR_LIXO.has(t)) return ''
+  // descarta vazamento de descrição/banho (não é cor de pedra)
+  if (/\b(R[ÓO]DIO|DOURAD|OURO|PRATA|ALIAN[ÇC]A|FILEIRA|VOLTA|GARRAS?|BRINCO|COLAR|ANEL|PULSEIRA|ARGOLA|PINGENTE|CORRENTE|PIERCING|TARRAXA)\b/.test(t)) return ''
+  return t
+}
+
+// Remove prefixos de truncamento da lista de cores (a fonte corta a descrição em tamanhos variados):
+// descarta "ACQ"/"ACQUA MAR" quando existe "ACQUA MARINE", mas mantém "BRANCA" (seguido de '+'/espaço).
+function dedupPrefixos(list) {
+  const arr = [...list].sort()
+  return arr.filter(v => !arr.some(w => w.length > v.length && w.startsWith(v) && /[A-Za-zÀ-ÿ]/.test(w[v.length])))
+}
+
+// Casa um valor contra um filtro multi-seleção "a|b|c" (vazio = sem filtro)
+function corMatch(corf, val) {
+  const s = String(corf || '').split('|').map(x => x.trim().toLowerCase()).filter(Boolean)
+  return !s.length || s.includes(String(val || '').toLowerCase())
+}
+
+// Banhos que ENCERRAM a descrição (Novitah) — âncora p/ achar onde termina o banho e começa a cor.
+// Mais específico primeiro ("RÓDIO NEGRO" antes de "RÓDIO").
+const BANHO_END = [
+  [/R[ÓO]DIO\s+NEGRO$/, 'RÓDIO NEGRO'],
+  [/R[ÓO]DIO\s+BRANCO$/, 'RÓDIO BRANCO'],
+  [/R[ÓO]DIO$/, 'RÓDIO'],
+  [/DOURAD[OA]$/, 'DOURADO'],
+  [/OURO\s+ROS[EÉ]$/, 'OURO ROSE'],
+  [/OURO$/, 'OURO'],
+  [/PRATA$/, 'PRATA'],
+]
+
+// Extrai "banho" e "cor da pedra" da descrição da variação (a fonte não tem esses campos).
+// A estrutura MUDA por empresa (heurística — a fonte trunca a descrição, pode falhar):
+//   Alinare: "<descrição> <metal> / <banho> / <cor ou SEM PEDRA> / ..."  (banho após o metal)
+//   Novitah: "<descrição> <BANHO> / <cor ou SEM PEDRA> / ..."            (banho no fim, antes da 1ª barra)
+function extrairBanhoCor(descricao, emp = 'alinare') {
+  const segs = String(descricao || '').split(/[/\\]/).map(s => s.trim()).filter(Boolean)
+
+  if (emp === 'novitah') {
+    // acha o segmento que TERMINA num banho (fim da descrição); a cor vem logo depois
+    let k = -1, banho = ''
+    for (let i = 0; i < segs.length && k < 0; i++) {
+      const u = segs[i].toUpperCase().trim()
+      for (const [re, val] of BANHO_END) { if (re.test(u)) { k = i; banho = val; break } }
+    }
+    if (k < 0) k = 0
+    return { banho, corPedra: canonCor(segs[k + 1]) }
+  }
+
+  // Alinare: ancora no metal (fim da descrição base); banho = seg seguinte, cor = a partir do próximo
+  let k = segs.findIndex(s => { const u = s.toUpperCase(); return METAIS_DESC.some(m => u === m || u.endsWith(' ' + m)) })
+  if (k < 0) k = 0
+  const bseg = (segs[k + 1] || '').toUpperCase()
+  const rod = /R[ÓO]D/.test(bseg), our = /OUR/.test(bseg), neg = /NEGR/.test(bseg), rose = /ROS[EÉ]/.test(bseg), pra = /PRATA/.test(bseg)
+  let banho = ''
+  if (our && rod) banho = 'OURO E RÓDIO'
+  else if (rod && neg) banho = 'RÓDIO NEGRO'
+  else if (our && rose) banho = 'OURO ROSE'
+  else if (rod) banho = 'RÓDIO'
+  else if (our) banho = 'OURO'
+  else if (pra) banho = 'PRATA'
+  return { banho, corPedra: canonCor(segs[k + 2]) }
+}
+
+function buildRow(pai, v, emp = 'alinare') {
   const item = v || pai
 
   const saldo01  = n(item.estoque_atual_01)
@@ -294,6 +375,7 @@ function buildRow(pai, v) {
     categoria:       item.categoria    || pai.categoria,
     tag2:            item.tag2         || pai.tag2,
     pedra:           item.pedra        || pai.pedra,
+    ...extrairBanhoCor(item.descricao || pai.descricao, emp),   // banho, corPedra (heurística da descrição, por empresa)
     reposicao:       item.reposicao,
     dataEntrada,
     isNovo,
@@ -332,7 +414,7 @@ async function getProdutos(emp = 'alinare') {
   if (hit) return hit
 
   const parents = await fetchAllCompras(emp)
-  const items   = expandVariacoes(parents)
+  const items   = expandVariacoes(parents, emp)
 
   items.sort((a, b) => b._valorEst - a._valorEst)
   const total = items.reduce((s, i) => s + i._valorEst, 0)
@@ -948,7 +1030,7 @@ app.get('/api/produtos/options', async (req, res) => {
   try {
     const all0 = await getProdutos(empValida(req.query.empresa))
     const { search = '', codigo: cf = '', tipo = 'todos', ruptura: rf = '', grupo: gf = '',
-            pedra: pf = '', tag2: tf = '', categoria: catf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '' } = req.query
+            pedra: pf = '', tag2: tf = '', categoria: catf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '', banho: bf = '', cor: corf = '' } = req.query
     const all = applyFilial(all0, fil)
     const q = search.trim().toLowerCase()
 
@@ -963,6 +1045,8 @@ app.get('/api/produtos/options', async (req, res) => {
       tag2:       i => !tf   || (i.tag2      || '').toLowerCase() === tf.toLowerCase(),
       categoria:  i => !catf || (i.categoria || '').toLowerCase() === catf.toLowerCase(),
       fornecedor: i => !ff   || (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase(),
+      banho:      i => !bf   || (i.banho    || '').toLowerCase() === bf.toLowerCase(),
+      cor:        i => corMatch(corf, i.corPedra),
       tipo:       i => tipo === 'todos' || (tipo === 'novo' ? i.isNovo === true : tipo === 'reposicao' ? i.isNovo === false : true),
       ruptura:    i => !rf || (rf === 'ruptura'     ? (i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0)
                             : rf === 'risco'        ? (i._saldo > 0 && i._dde < 30 && i._dde < 9999 && i._vend90 > 0)
@@ -980,7 +1064,9 @@ app.get('/api/produtos/options', async (req, res) => {
     const tag2s       = distinct(['tag2'], 'tag2')
     const categorias  = distinct(['categoria'], 'categoria')
     const fornecedores= distinct(['fornecedor'], 'nomeFornecedor')
-    res.json({ grupos, pedras, tag2s, categorias, fornecedores })
+    const banhos      = distinct(['banho'], 'banho')
+    const coresPedra  = dedupPrefixos(distinct(['cor'], 'corPedra'))
+    res.json({ grupos, pedras, tag2s, categorias, fornecedores, banhos, coresPedra })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -999,7 +1085,7 @@ function applyFilial(items, filial) {
 app.get('/api/produtos', async (req, res) => {
   try {
     const all = await getProdutos(empValida(req.query.empresa))
-    const { view = 'list', page = '0', limit = '100', sort = '_valorEst', dir = 'desc', search = '', tipo = 'todos', grupo: gf = '', pedra: pf = '', tag2: tf = '', codigo: cf = '', ruptura: rf = '', categoria: catf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '' } = req.query
+    const { view = 'list', page = '0', limit = '100', sort = '_valorEst', dir = 'desc', search = '', tipo = 'todos', grupo: gf = '', pedra: pf = '', tag2: tf = '', codigo: cf = '', ruptura: rf = '', categoria: catf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '', banho: bf = '', cor: corf = '' } = req.query
 
     // ── Agrupado (poucas linhas, retorna tudo) ──────────────────────────────
     if (view !== 'list') {
@@ -1013,6 +1099,8 @@ app.get('/api/produtos', async (req, res) => {
       if (tf)    grpItems = grpItems.filter(i => (i.tag2      || '').toLowerCase() === tf.toLowerCase())
       if (catf)  grpItems = grpItems.filter(i => (i.categoria || '').toLowerCase() === catf.toLowerCase())
       if (ff)    grpItems = grpItems.filter(i => (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase())
+      if (bf)    grpItems = grpItems.filter(i => (i.banho     || '').toLowerCase() === bf.toLowerCase())
+      if (corf)  grpItems = grpItems.filter(i => corMatch(corf, i.corPedra))
       if (tipo !== 'todos') grpItems = grpItems.filter(i => tipo === 'novo' ? i.isNovo : !i.isNovo)
       if (rf)    grpItems = grpItems.filter(i => rf === 'risco' ? (i._dde < 30 && i._dde < 9999) : rf === 'ruptura' ? i._dde === 0 : true)
       if (esf === 'com')   grpItems = grpItems.filter(i => i._saldo > 0)
@@ -1053,6 +1141,8 @@ app.get('/api/produtos', async (req, res) => {
     if (tf)    items = items.filter(i => (i.tag2      || '').toLowerCase() === tf.toLowerCase())
     if (catf)  items = items.filter(i => (i.categoria || '').toLowerCase() === catf.toLowerCase())
     if (ff)    items = items.filter(i => (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase())
+    if (bf)    items = items.filter(i => (i.banho     || '').toLowerCase() === bf.toLowerCase())
+    if (corf)  items = items.filter(i => corMatch(corf, i.corPedra))
 
     const totalNovo      = items.filter(i => i.isNovo === true).length
     const totalReposicao = items.filter(i => i.isNovo === false).length
@@ -1067,6 +1157,17 @@ app.get('/api/produtos', async (req, res) => {
     if (esf === 'sem')         items = items.filter(i => i._saldo <= 0)
     if (esf === 'baixo')       items = items.filter(i => i._saldo > 0 && i._dde < 30 && i._dde < 9999)
 
+    // Pedidos de compra em aberto (saldo pendente) por SKU — anexado ANTES do sort,
+    // para permitir ordenar pela coluna "Pedidos". A fonte não tem data de chegada.
+    const pedItens = await buildPedidosItens(empValida(req.query.empresa))
+    const pedMap = {}
+    for (const it of pedItens) {
+      if (!pedMap[it.produto]) pedMap[it.produto] = { qtd: 0, pedidos: [] }
+      pedMap[it.produto].qtd += it.qtdSaldo
+      pedMap[it.produto].pedidos.push({ pedido: it.pedido, qtd: it.qtdSaldo, emissao: it.emissao, fornecedor: it.nomeFornecedor })
+    }
+    items = items.map(it => ({ ...it, _pedidoQtd: pedMap[it.produto] ? pedMap[it.produto].qtd : 0 }))
+
     items = [...items].sort((a, b) => {
       const va = a[sort], vb = b[sort]
       const na = parseFloat(va), nb = parseFloat(vb)
@@ -1076,7 +1177,12 @@ app.get('/api/produtos', async (req, res) => {
 
     const total = items.length
     const p = parseInt(page), l = parseInt(limit)
-    res.json({ total, totalNovo, totalReposicao, totalRuptura, page: p, items: items.slice(p * l, (p + 1) * l) })
+    // _pedidoQtd já está em cada item (anexado antes do sort); aqui só o detalhe p/ o hover da página
+    const itemsOut = items.slice(p * l, (p + 1) * l).map(it => {
+      const pd = pedMap[it.produto]
+      return { ...it, _pedidos: pd ? [...pd.pedidos].sort((a, b) => b.qtd - a.qtd) : [] }
+    })
+    res.json({ total, totalNovo, totalReposicao, totalRuptura, page: p, items: itemsOut })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1263,7 +1369,7 @@ app.get('/api/dashboard', async (req, res) => {
     }
 
     const all = await getProdutos(emp)
-    const { grupo: gf = '', pedra: pf = '', tag2: tf = '', search: sq = '', codigo: cf = '', tipo = 'todos', ruptura: rf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '' } = req.query
+    const { grupo: gf = '', pedra: pf = '', tag2: tf = '', search: sq = '', codigo: cf = '', tipo = 'todos', ruptura: rf = '', estoque: esf = '', filial: fil = '', fornecedor: ff = '', banho: bf = '', cor: corf = '' } = req.query
 
     let items = applyFilial(all, fil)
     const q = sq.trim().toLowerCase()
@@ -1273,6 +1379,8 @@ app.get('/api/dashboard', async (req, res) => {
     if (pf)  items = items.filter(i => (i.pedra || '').toLowerCase() === pf.toLowerCase())
     if (tf)  items = items.filter(i => (i.tag2  || '').toLowerCase() === tf.toLowerCase())
     if (ff)  items = items.filter(i => (i.nomeFornecedor || '').toLowerCase() === ff.toLowerCase())
+    if (bf)  items = items.filter(i => (i.banho    || '').toLowerCase() === bf.toLowerCase())
+    if (corf)items = items.filter(i => corMatch(corf, i.corPedra))
     if (tipo === 'novo')      items = items.filter(i => i.isNovo === true)
     if (tipo === 'reposicao') items = items.filter(i => i.isNovo === false)
     if (rf === 'ruptura')     items = items.filter(i => i._saldo <= 0 && i._vend30 > 0 && i._vend90 > 0)
@@ -1976,6 +2084,264 @@ app.get('/api/financeiro', async (req, res) => {
     res.json(buildFinanceiro(fin, { de, ate, pagDe, pagAte, situacao, vencidas, cliente, vendedor, modalidade, parcela }))
   } catch (e) {
     res.status(200).json({ erro: e.message, cards: {}, vendedores: [], modalidade: [] })
+  }
+})
+
+// Ficha do cliente: perfil financeiro completo de UM cliente (todas as contas,
+// entre todos os vendedores) + ranking do cliente no conjunto todo.
+function buildClienteDetalhe(fin, codigo, filtros = {}) {
+  const vendedoresRaw = Array.isArray(fin?.Vendedores) ? fin.Vendedores : []
+  const cod = String(codigo || '').trim()
+  const hoje = new Date()
+  const hojeInt = hoje.getFullYear() * 10000 + (hoje.getMonth() + 1) * 100 + hoje.getDate()
+  const deInt     = filtros.de     ? +String(filtros.de).replace(/-/g, '')     : null
+  const ateInt    = filtros.ate    ? +String(filtros.ate).replace(/-/g, '')    : null
+  const pagDeInt  = filtros.pagDe  ? +String(filtros.pagDe).replace(/-/g, '')  : null
+  const pagAteInt = filtros.pagAte ? +String(filtros.pagAte).replace(/-/g, '') : null
+
+  let nome = ''
+  let devido = 0, pago = 0, pend = 0, ncTotal = 0, outrosTotal = 0
+  const modMap = {}, mesMap = {}, vendMap = {}, ncPorTipo = {}, outrosPorTipo = {}
+  let nTitulos = 0, nAbertas = 0, nVencidas = 0, nPagas = 0
+  let primeiraInt = null, ultimaInt = null, primeira = '', ultima = ''
+  const contasList = []
+  const totalPorCliente = {}   // ranking: total (pago+pend) por cliente
+
+  for (const v of vendedoresRaw) {
+    const vk = v.Vendedor || v.NVendedor || '—'
+    const vNome = v.NVendedor || v.Vendedor || '—'
+    for (const c of (v.ContasAReceber || [])) {
+      let cPago = 0, cPend = 0, cDevido = 0, venc = ''
+      for (const p of (c.Parcelas || [])) {
+        cPago += Number(p.ValorPago) || 0
+        cDevido += Number(p.ValorTotal) || 0
+        const saldo = Number(p.SaldoAberto) || 0
+        if (saldo > 0) { cPend += saldo; if (!venc) venc = p.VencimentoReal || p.Vencimento || '' }
+      }
+      const total = cPago + cPend
+      const cCod = c.Cliente || ''
+      const emiInt = brToInt(c.Emissao)
+      let pgDataInt = 0
+      if (pagDeInt || pagAteInt) {
+        for (const pg of (c.Pagamentos || [])) {
+          if ((pg.Tipo || '') !== 'Entrada') continue
+          const di = brToInt(pg.DataPagamento); if (di && di > pgDataInt) pgDataInt = di
+        }
+      }
+      const okDatas =
+        (!deInt     || (emiInt && emiInt >= deInt)) &&
+        (!ateInt    || (emiInt && emiInt <= ateInt)) &&
+        (!pagDeInt  || (pgDataInt && pgDataInt >= pagDeInt)) &&
+        (!pagAteInt || (pgDataInt && pgDataInt <= pagAteInt))
+      if (!okDatas) continue
+      totalPorCliente[cCod] = (totalPorCliente[cCod] || 0) + total
+      if (cCod !== cod) continue
+
+      // ── cliente-alvo ──
+      if (!nome) nome = c.Nome || cod
+      const aberto = cPend > 0
+      const ehNC = /nota de cr[eé]dito/i.test(c.Historico || '')
+      const pfxUp = (c.Prefixo || '').trim().toUpperCase()
+      const ehOutroCred = !ehNC && (pfxUp === 'NC' || pfxUp === 'NCI')
+      const contrib = cPago + cPend
+
+      devido += cDevido; pago += cPago; pend += cPend
+      if (ehNC) { ncTotal += contrib; const t = pfxUp || '—'; ncPorTipo[t] = (ncPorTipo[t] || 0) + contrib }
+      else if (ehOutroCred) { outrosTotal += contrib; const t = classificaOutroCredito(c.Historico); outrosPorTipo[t] = (outrosPorTipo[t] || 0) + contrib }
+
+      for (const pg of (c.Pagamentos || [])) {
+        if ((pg.Tipo || '') !== 'Entrada') continue
+        const forma = (pg.FormaPagamento || pg.Numerario || '—').trim()
+        modMap[forma] = (modMap[forma] || 0) + (Number(pg.ValorPagoReais) || 0)
+      }
+
+      if (!vendMap[vk]) vendMap[vk] = { nome: vNome, codigo: v.Vendedor || '', total: 0, titulos: 0 }
+      vendMap[vk].total += total; vendMap[vk].titulos++
+
+      if (emiInt) {
+        if (primeiraInt === null || emiInt < primeiraInt) { primeiraInt = emiInt; primeira = c.Emissao }
+        if (ultimaInt === null || emiInt > ultimaInt)     { ultimaInt = emiInt;   ultima = c.Emissao }
+        const per = `${String(emiInt).slice(0, 4)}-${String(emiInt).slice(4, 6)}`
+        if (!mesMap[per]) mesMap[per] = { periodo: per, devido: 0, pago: 0, pend: 0, titulos: 0 }
+        mesMap[per].devido += cDevido; mesMap[per].pago += cPago; mesMap[per].pend += cPend; mesMap[per].titulos++
+      }
+
+      nTitulos++
+      if (aberto) { nAbertas++; const vi = brToInt(venc); if (vi && vi < hojeInt) nVencidas++ } else nPagas++
+
+      contasList.push({
+        numero: c.Numero || '', prefixo: c.Prefixo || '', emissao: c.Emissao || '',
+        historico: c.Historico || '', vencimento: venc,
+        devido: cDevido, pago: cPago, pend: cPend, total, aberto,
+        notaCredito: ehNC ? contrib : 0,
+      })
+    }
+  }
+
+  if (!nTitulos) return { erro: 'Cliente sem títulos encontrados', cliente: { codigo: cod, nome: '' } }
+
+  const total = pago + pend
+  const modalidades = Object.entries(modMap).filter(([, x]) => x > 0).map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
+  const modTotal = modalidades.reduce((s, m) => s + m.valor, 0)
+  const ranking = Object.entries(totalPorCliente).sort((a, b) => b[1] - a[1])
+  const pos = ranking.findIndex(([c]) => c === cod) + 1
+  const ultDate = ultima ? parseBRDate(ultima) : null
+
+  return {
+    cliente: { codigo: cod, nome },
+    totais: { devido, pago, pend, total, pctPend: total > 0 ? (pend / total) * 100 : 0, notaCredito: ncTotal, outrosCredito: outrosTotal },
+    compras: {
+      nTitulos, ticketMedio: nTitulos > 0 ? total / nTitulos : 0,
+      primeira, ultima,
+      diasDesdeUltima: ultDate ? Math.max(0, diasEntre(ultDate, hoje)) : null,
+    },
+    modalidades: modalidades.map(m => ({ ...m, pct: modTotal > 0 ? (m.valor / modTotal) * 100 : 0 })),
+    ncTipos:     Object.entries(ncPorTipo).map(([tipo, valor]) => ({ tipo, valor })).sort((a, b) => a.valor - b.valor),
+    outrosTipos: Object.entries(outrosPorTipo).map(([tipo, valor]) => ({ tipo, valor })).sort((a, b) => a.valor - b.valor),
+    timeline: Object.values(mesMap).sort((a, b) => a.periodo.localeCompare(b.periodo)),
+    vendedores: Object.values(vendMap).sort((a, b) => b.total - a.total),
+    situacao: { titulos: nTitulos, abertas: nAbertas, vencidas: nVencidas, pagas: nPagas },
+    ranking: { posicao: pos, deTotal: ranking.length },
+    contas: contasList.sort((a, b) => (brToInt(b.emissao) || 0) - (brToInt(a.emissao) || 0)),
+  }
+}
+
+app.get('/api/financeiro/cliente', async (req, res) => {
+  try {
+    const emp = empValida(req.query.empresa)
+    const codigo = String(req.query.codigo || '').trim()
+    if (!codigo) return res.status(400).json({ error: 'codigo obrigatório' })
+    const fin = await fetchFinanceiro(emp)
+    if (!fin) return res.json({ carregando: true })
+    const { de, ate, pagDe, pagAte } = req.query
+    res.json(buildClienteDetalhe(fin, codigo, { de, ate, pagDe, pagAte }))
+  } catch (e) {
+    res.status(200).json({ erro: e.message })
+  }
+})
+
+// Ficha da vendedora: perfil financeiro de UM vendedor (todas as suas contas) +
+// top clientes atendidos e ranking do vendedor no conjunto todo.
+function buildVendedorDetalhe(fin, codigo, filtros = {}) {
+  const vendedoresRaw = Array.isArray(fin?.Vendedores) ? fin.Vendedores : []
+  const cod = String(codigo || '').trim()
+  const hoje = new Date()
+  const hojeInt = hoje.getFullYear() * 10000 + (hoje.getMonth() + 1) * 100 + hoje.getDate()
+  const deInt     = filtros.de     ? +String(filtros.de).replace(/-/g, '')     : null
+  const ateInt    = filtros.ate    ? +String(filtros.ate).replace(/-/g, '')    : null
+  const pagDeInt  = filtros.pagDe  ? +String(filtros.pagDe).replace(/-/g, '')  : null
+  const pagAteInt = filtros.pagAte ? +String(filtros.pagAte).replace(/-/g, '') : null
+
+  let nome = ''
+  let devido = 0, pago = 0, pend = 0, ncTotal = 0, outrosTotal = 0
+  const modMap = {}, mesMap = {}, cliMap = {}, ncPorTipo = {}, outrosPorTipo = {}
+  let nTitulos = 0, nAbertas = 0, nVencidas = 0, nPagas = 0
+  let primeiraInt = null, ultimaInt = null, primeira = '', ultima = ''
+  const totalPorVendedor = {}   // ranking: total (pago+pend) por vendedor (código, fallback nome)
+
+  for (const v of vendedoresRaw) {
+    const vCod  = String(v.Vendedor || '').trim()
+    const vNome = v.NVendedor || v.Vendedor || '—'
+    const rkey  = vCod || vNome
+    for (const c of (v.ContasAReceber || [])) {
+      let cPago = 0, cPend = 0, cDevido = 0, venc = ''
+      for (const p of (c.Parcelas || [])) {
+        cPago += Number(p.ValorPago) || 0
+        cDevido += Number(p.ValorTotal) || 0
+        const saldo = Number(p.SaldoAberto) || 0
+        if (saldo > 0) { cPend += saldo; if (!venc) venc = p.VencimentoReal || p.Vencimento || '' }
+      }
+      const total = cPago + cPend
+      const emiInt = brToInt(c.Emissao)
+      let pgDataInt = 0
+      if (pagDeInt || pagAteInt) {
+        for (const pg of (c.Pagamentos || [])) {
+          if ((pg.Tipo || '') !== 'Entrada') continue
+          const di = brToInt(pg.DataPagamento); if (di && di > pgDataInt) pgDataInt = di
+        }
+      }
+      const okDatas =
+        (!deInt     || (emiInt && emiInt >= deInt)) &&
+        (!ateInt    || (emiInt && emiInt <= ateInt)) &&
+        (!pagDeInt  || (pgDataInt && pgDataInt >= pagDeInt)) &&
+        (!pagAteInt || (pgDataInt && pgDataInt <= pagAteInt))
+      if (!okDatas) continue
+      totalPorVendedor[rkey] = (totalPorVendedor[rkey] || 0) + total
+      if (vCod !== cod) continue
+
+      // ── vendedor-alvo ──
+      if (!nome) nome = vNome
+      const aberto = cPend > 0
+      const ehNC = /nota de cr[eé]dito/i.test(c.Historico || '')
+      const pfxUp = (c.Prefixo || '').trim().toUpperCase()
+      const ehOutroCred = !ehNC && (pfxUp === 'NC' || pfxUp === 'NCI')
+      const contrib = cPago + cPend
+
+      devido += cDevido; pago += cPago; pend += cPend
+      if (ehNC) { ncTotal += contrib; const t = pfxUp || '—'; ncPorTipo[t] = (ncPorTipo[t] || 0) + contrib }
+      else if (ehOutroCred) { outrosTotal += contrib; const t = classificaOutroCredito(c.Historico); outrosPorTipo[t] = (outrosPorTipo[t] || 0) + contrib }
+
+      for (const pg of (c.Pagamentos || [])) {
+        if ((pg.Tipo || '') !== 'Entrada') continue
+        const forma = (pg.FormaPagamento || pg.Numerario || '—').trim()
+        modMap[forma] = (modMap[forma] || 0) + (Number(pg.ValorPagoReais) || 0)
+      }
+
+      // agrupa por cliente (top clientes atendidos)
+      const ck = c.Cliente || c.Nome || '—'
+      if (!cliMap[ck]) cliMap[ck] = { codigo: c.Cliente || '', nome: c.Nome || ck, total: 0, pago: 0, pend: 0, titulos: 0 }
+      cliMap[ck].total += total; cliMap[ck].pago += cPago; cliMap[ck].pend += cPend; cliMap[ck].titulos++
+
+      if (emiInt) {
+        if (primeiraInt === null || emiInt < primeiraInt) { primeiraInt = emiInt; primeira = c.Emissao }
+        if (ultimaInt === null || emiInt > ultimaInt)     { ultimaInt = emiInt;   ultima = c.Emissao }
+        const per = `${String(emiInt).slice(0, 4)}-${String(emiInt).slice(4, 6)}`
+        if (!mesMap[per]) mesMap[per] = { periodo: per, devido: 0, pago: 0, pend: 0, titulos: 0 }
+        mesMap[per].devido += cDevido; mesMap[per].pago += cPago; mesMap[per].pend += cPend; mesMap[per].titulos++
+      }
+
+      nTitulos++
+      if (aberto) { nAbertas++; const vi = brToInt(venc); if (vi && vi < hojeInt) nVencidas++ } else nPagas++
+    }
+  }
+
+  if (!nTitulos) return { erro: 'Vendedor sem títulos encontrados', vendedor: { codigo: cod, nome: '' } }
+
+  const total = pago + pend
+  const modalidades = Object.entries(modMap).filter(([, x]) => x > 0).map(([forma, valor]) => ({ forma, valor })).sort((a, b) => b.valor - a.valor)
+  const modTotal = modalidades.reduce((s, m) => s + m.valor, 0)
+  const clientes = Object.values(cliMap).map(c => ({ ...c, pctPend: c.total > 0 ? (c.pend / c.total) * 100 : 0 })).sort((a, b) => b.total - a.total)
+  const ranking = Object.entries(totalPorVendedor).sort((a, b) => b[1] - a[1])
+  const pos = ranking.findIndex(([c]) => c === cod) + 1
+  const ultDate = ultima ? parseBRDate(ultima) : null
+
+  return {
+    vendedor: { codigo: cod, nome },
+    totais: { devido, pago, pend, total, pctPend: total > 0 ? (pend / total) * 100 : 0, notaCredito: ncTotal, outrosCredito: outrosTotal },
+    compras: {
+      nTitulos, nClientes: clientes.length, ticketMedio: nTitulos > 0 ? total / nTitulos : 0,
+      primeira, ultima,
+      diasDesdeUltima: ultDate ? Math.max(0, diasEntre(ultDate, hoje)) : null,
+    },
+    modalidades: modalidades.map(m => ({ ...m, pct: modTotal > 0 ? (m.valor / modTotal) * 100 : 0 })),
+    timeline: Object.values(mesMap).sort((a, b) => a.periodo.localeCompare(b.periodo)),
+    clientes: clientes.slice(0, 60),
+    situacao: { titulos: nTitulos, abertas: nAbertas, vencidas: nVencidas, pagas: nPagas },
+    ranking: { posicao: pos, deTotal: ranking.length },
+  }
+}
+
+app.get('/api/financeiro/vendedor', async (req, res) => {
+  try {
+    const emp = empValida(req.query.empresa)
+    const codigo = String(req.query.codigo || '').trim()
+    if (!codigo) return res.status(400).json({ error: 'codigo obrigatório' })
+    const fin = await fetchFinanceiro(emp)
+    if (!fin) return res.json({ carregando: true })
+    const { de, ate, pagDe, pagAte } = req.query
+    res.json(buildVendedorDetalhe(fin, codigo, { de, ate, pagDe, pagAte }))
+  } catch (e) {
+    res.status(200).json({ erro: e.message })
   }
 })
 
