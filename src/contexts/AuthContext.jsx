@@ -89,7 +89,7 @@ export function AuthProvider({ children }) {
   const podeFinanceiro = !!session && (isSuper || permSet.has('financeiro'))
 
   return (
-    <AuthContext.Provider value={{ session, profile, permSet, podeVer, podeFinanceiro, login, logout, loading, reloadProfile: () => session && loadProfile(session.user.id) }}>
+    <AuthContext.Provider value={{ session, profile, permSet, podeVer, podeFinanceiro, isSuper, login, logout, loading, reloadProfile: () => session && loadProfile(session.user.id) }}>
       {children}
     </AuthContext.Provider>
   )

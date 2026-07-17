@@ -16,11 +16,11 @@ import AdminPage from './pages/AdminPage'
 import LoginPage from './pages/LoginPage'
 
 function PrivateRoute({ children, chave, soFinanceiro, soAdmin }) {
-  const { session, profile, podeVer, podeFinanceiro, loading } = useAuth()
+  const { session, profile, podeVer, podeFinanceiro, isSuper, loading } = useAuth()
   if (loading || (session && !profile)) return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'#6b7280', fontSize:13 }}>Carregando…</div>
   if (!session) return <Navigate to="/login" replace />
   if (!profile.ativo) return <Navigate to="/login" replace />
-  if (soAdmin && profile.role !== 'admin') return <Navigate to="/" replace />
+  if (soAdmin && profile.role !== 'admin' && !isSuper) return <Navigate to="/" replace />
   if (soFinanceiro && !podeFinanceiro) return <Navigate to="/" replace />
   if (chave && !podeVer(chave)) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'60vh', gap:8 }}>
@@ -42,9 +42,9 @@ function AppRoutes() {
         <Route path="compras"      element={<PrivateRoute chave="compras"><ComprasPage /></PrivateRoute>} />
         <Route path="pedidos"      element={<PrivateRoute chave="pedidos"><PedidosPage /></PrivateRoute>} />
         <Route path="fornecedores" element={<PrivateRoute chave="fornecedores"><FornecedorPage /></PrivateRoute>} />
-        <Route path="financeiro"   element={<PrivateRoute chave="clientes" soFinanceiro><FinanceiroPage /></PrivateRoute>} />
-        <Route path="financeiro/cliente/:codigo" element={<PrivateRoute chave="clientes" soFinanceiro><ClienteDetalhePage /></PrivateRoute>} />
-        <Route path="financeiro/vendedor/:codigo" element={<PrivateRoute chave="clientes" soFinanceiro><VendedorDetalhePage /></PrivateRoute>} />
+        <Route path="financeiro"   element={<PrivateRoute soFinanceiro><FinanceiroPage /></PrivateRoute>} />
+        <Route path="financeiro/cliente/:codigo" element={<PrivateRoute soFinanceiro><ClienteDetalhePage /></PrivateRoute>} />
+        <Route path="financeiro/vendedor/:codigo" element={<PrivateRoute soFinanceiro><VendedorDetalhePage /></PrivateRoute>} />
         <Route path="assistencias" element={<PrivateRoute chave="assistencias"><AssistenciasPage /></PrivateRoute>} />
         <Route path="admin"        element={<PrivateRoute soAdmin><AdminPage /></PrivateRoute>} />
         <Route path="*"            element={<Navigate to="/" replace />} />

@@ -26,7 +26,7 @@ export default function Layout() {
   const prevRefreshed    = useRef(null)
   const [justUpdated, setJustUpdated] = useState(false)
   const [showTour,    setShowTour]    = useState(() => !localStorage.getItem(TOUR_KEY))
-  const { profile, podeVer, podeFinanceiro, logout: supaLogout } = useAuth()
+  const { profile, podeVer, podeFinanceiro, isSuper, logout: supaLogout } = useAuth()
   const { empresa, empresaLabel, setEmpresa } = useCompany()
 
   async function logout() {
@@ -134,7 +134,7 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
-          {profile?.role === 'admin' && (
+          {(profile?.role === 'admin' || isSuper) && (
             <NavLink to="/admin" className={({ isActive }) => `nav-item rounded-md ${isActive ? 'active' : ''}`}>
               <IconShield size={16} />
               Usuários
