@@ -369,7 +369,7 @@ function TabelaProdutos({ rows, total, page, totalPages, sortK, sortD, onSort, o
             <tr>
               <TH k="grupo"       label="Grupo" />
               <TH k="pedra"       label="TP Pedra" />
-              <TH k="corPedra"    label="Cor da Pedra" />
+              <TH k="corPedra"    label="Cor P." />
               <TH k="banho"       label="Banho" />
               <TH k="tag2"        label="TAG 2" />
               <TH k="nomeFornecedor" label="Fornecedor" />
