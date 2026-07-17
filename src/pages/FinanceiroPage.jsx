@@ -200,7 +200,6 @@ export default function FinanceiroPage() {
                               </div>
                               <div style={{ color: AMARELO, fontSize: 11, fontFamily: 'monospace', marginLeft: 17 }}>
                                 {v.codigo ? `#${v.codigo} · ` : ''}{fNum(v.clientesCount)} cliente{v.clientesCount === 1 ? '' : 's'}
-                                {(v.modalidades || []).length > 0 && ' · passe o mouse p/ modalidades'}
                               </div>
                             </div>
                             {v.codigo && (
