@@ -189,8 +189,9 @@ export default function AdminPage() {
         const isAdmin   = u.role === 'admin'
         const permsUser = permissoes[u.id] || {}
         const aberto    = !!expandido[u.id]
-        const temFin    = !!permsUser['financeiro']
-        const paginasLib = isAdmin ? ['Todas as páginas'] : PAGINAS.filter(p => permsUser[p.chave]).map(p => p.label)
+        const isTargetSuper = SUPER_ADMINS.includes((u.email || '').toLowerCase())
+        const temFin    = isTargetSuper || !!permsUser['financeiro']
+        const paginasLib = isTargetSuper ? ['Acesso total (super-admin)'] : PAGINAS.filter(p => permsUser[p.chave]).map(p => p.label)
 
         return (
           <div key={u.id} className="card" style={{ padding:0, overflow:'hidden' }}>
@@ -264,28 +265,6 @@ export default function AdminPage() {
             {/* Permissões */}
             {aberto && (
               <div style={{ padding:'18px 20px' }}>
-                {/* Financeiro — acesso especial: nem admin ganha automático, é liberado individualmente */}
-                {(() => {
-                  const libFin = !!permsUser['financeiro']
-                  return (
-                    <div onClick={() => togglePermissao(u.id, 'financeiro', libFin)}
-                      style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', marginBottom:16,
-                        borderRadius:8, cursor:'pointer',
-                        background: libFin ? 'rgba(245,197,24,0.10)' : 'rgba(245,197,24,0.03)',
-                        border:`1px solid ${libFin ? 'rgba(245,197,24,0.5)' : 'rgba(245,197,24,0.2)'}` }}>
-                      <div style={{ width:16, height:16, borderRadius:4, flexShrink:0,
-                        background: libFin ? '#f5c518' : 'transparent',
-                        border:`2px solid ${libFin ? '#f5c518' : '#8a6d1a'}`,
-                        display:'flex', alignItems:'center', justifyContent:'center' }}>
-                        {libFin && <span style={{ color:'#0d0e16', fontSize:10, fontWeight:900 }}>✓</span>}
-                      </div>
-                      <div>
-                        <div style={{ fontSize:12, fontWeight:700, color: libFin ? '#f5c518' : '#a98a2e' }}>💰 Financeiro (acesso especial)</div>
-                        <div style={{ fontSize:10.5, color:'#6b7280', marginTop:1 }}>Liberado individualmente — nem admin tem por padrão.</div>
-                      </div>
-                    </div>
-                  )
-                })()}
                 {/* Ações sensíveis — só Rafael/Renato */}
                 {isSuper && (
                   <div style={{ display:'flex', gap:8, marginBottom:16 }}>
@@ -301,36 +280,23 @@ export default function AdminPage() {
                     </button>
                   </div>
                 )}
-                {isAdmin ? (
-                  <p style={{ fontSize:12, color:'#D4AF37' }}>Admin tem acesso total às demais páginas automaticamente.</p>
+                {isTargetSuper ? (
+                  <p style={{ fontSize:12, color:'#D4AF37' }}>👑 Super-admin — acesso total a tudo (não pode ser restrito).</p>
                 ) : (
                   <>
+                    {isAdmin && <p style={{ fontSize:11.5, color:'#93c5fd', marginBottom:10 }}>Admin: acessa a tela de Usuários. As demais páginas são liberadas abaixo (pode ter telas sem acesso).</p>}
                     <div style={{ display:'flex', gap:8, marginBottom:14, alignItems:'center' }}>
                       <button onClick={() => liberarTudo(u.id)} className="btn-ghost text-xs" style={{ color:'#4ade80' }}>✓ Liberar tudo</button>
                       <button onClick={() => bloquearTudo(u.id)} className="btn-ghost text-xs" style={{ color:'#f87171' }}>✕ Bloquear tudo</button>
                     </div>
+                    {/* Grade de permissões — Contas a Receber junto com as demais páginas */}
                     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(210px,1fr))', gap:8 }}>
-                      {PAGINAS.map(pag => {
-                        const lib = !!permsUser[pag.chave]
-                        return (
-                          <div key={pag.chave} onClick={() => togglePermissao(u.id, pag.chave, lib)}
-                            style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px',
-                              borderRadius:8, cursor:'pointer',
-                              background: lib ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.05)',
-                              border:`1px solid ${lib ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.18)'}`,
-                              transition:'all 0.15s' }}>
-                            <div style={{ width:16, height:16, borderRadius:4, flexShrink:0,
-                              background: lib ? '#4ade80' : 'transparent',
-                              border:`2px solid ${lib ? '#4ade80' : '#4b5063'}`,
-                              display:'flex', alignItems:'center', justifyContent:'center' }}>
-                              {lib && <span style={{ color:'#0d0e16', fontSize:10, fontWeight:900 }}>✓</span>}
-                            </div>
-                            <span style={{ fontSize:12, color: lib ? '#e8eaf0' : '#6b7280', userSelect:'none' }}>
-                              {pag.label}
-                            </span>
-                          </div>
-                        )
-                      })}
+                      <PermBox liberado={!!permsUser['financeiro']} label="💰 Contas a Receber"
+                        onClick={() => togglePermissao(u.id, 'financeiro', !!permsUser['financeiro'])} />
+                      {PAGINAS.map(pag => (
+                        <PermBox key={pag.chave} liberado={!!permsUser[pag.chave]} label={pag.label}
+                          onClick={() => togglePermissao(u.id, pag.chave, !!permsUser[pag.chave])} />
+                      ))}
                     </div>
                   </>
                 )}
@@ -339,6 +305,24 @@ export default function AdminPage() {
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Checkbox de permissão (verde quando liberado)
+function PermBox({ liberado, label, onClick }) {
+  return (
+    <div onClick={onClick}
+      style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 14px', borderRadius:8, cursor:'pointer',
+        background: liberado ? 'rgba(74,222,128,0.08)' : 'rgba(248,113,113,0.05)',
+        border:`1px solid ${liberado ? 'rgba(74,222,128,0.25)' : 'rgba(248,113,113,0.18)'}`, transition:'all 0.15s' }}>
+      <div style={{ width:16, height:16, borderRadius:4, flexShrink:0,
+        background: liberado ? '#4ade80' : 'transparent',
+        border:`2px solid ${liberado ? '#4ade80' : '#4b5063'}`,
+        display:'flex', alignItems:'center', justifyContent:'center' }}>
+        {liberado && <span style={{ color:'#0d0e16', fontSize:10, fontWeight:900 }}>✓</span>}
+      </div>
+      <span style={{ fontSize:12, color: liberado ? '#e8eaf0' : '#6b7280', userSelect:'none' }}>{label}</span>
     </div>
   )
 }

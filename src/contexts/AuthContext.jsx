@@ -3,8 +3,9 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
-// Financeiro fica restrito a estes e-mails (não aparece no menu nem na rota p/ os demais)
-const FINANCEIRO_EMAILS = ['rafael.silva@azime.com.br']
+// Super-admins: acesso total a tudo, sempre (não podem ser restritos). Os demais
+// (inclusive role 'admin') têm acesso por permissão individual (checkboxes).
+const SUPER_ADMINS = ['rafael.silva@azime.com.br', 'renato@azime.com.br']
 
 export const PAGINAS = [
   { chave: 'dashboard',    label: 'Dashboard' },
@@ -44,15 +45,8 @@ export function AuthProvider({ children }) {
     }
 
     setProfile(prof)
-    // 'financeiro' é explícita (nem admin ganha automático); só entra se liberada individualmente.
-    const granted = new Set((perms || []).filter(p => p.liberado).map(p => p.chave))
-    if (prof.role === 'admin') {
-      const all = new Set(PAGINAS.map(p => p.chave))   // admin: acesso total às páginas normais
-      if (granted.has('financeiro')) all.add('financeiro')
-      setPermSet(all)
-    } else {
-      setPermSet(granted)
-    }
+    // Acesso por permissão individual para todos (super-admin é tratado no podeVer/podeFinanceiro).
+    setPermSet(new Set((perms || []).filter(p => p.liberado).map(p => p.chave)))
   }
 
   useEffect(() => {
@@ -81,18 +75,18 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut()
   }
 
+  // Super-admin (Rafael/Renato): tudo liberado sempre, independente de permissões/perfil
+  const isSuper = !!session && SUPER_ADMINS.includes((session.user?.email || '').toLowerCase())
+
   function podeVer(chave) {
+    if (isSuper) return true
     if (!profile) return false
-    if (profile.role === 'admin') return true
     return permSet.has(chave)
   }
 
   const loading = session === undefined
 
-  // Financeiro: sempre para o Rafael; para os demais, só se explicitamente liberado
-  const podeFinanceiro = !!session && (
-    FINANCEIRO_EMAILS.includes((session.user?.email || '').toLowerCase()) || permSet.has('financeiro')
-  )
+  const podeFinanceiro = !!session && (isSuper || permSet.has('financeiro'))
 
   return (
     <AuthContext.Provider value={{ session, profile, permSet, podeVer, podeFinanceiro, login, logout, loading, reloadProfile: () => session && loadProfile(session.user.id) }}>
