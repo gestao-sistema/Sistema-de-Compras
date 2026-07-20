@@ -24,6 +24,8 @@ const fNumc = v => {
 export default function LancamentosPage() {
   const [expandMes, setExpandMes] = useState({})
   const [expandDia, setExpandDia] = useState({})
+  const [expandForn, setExpandForn] = useState({})
+  const [expandLanc, setExpandLanc] = useState({})
   const [fornBusca, setFornBusca] = useState('')
 
   const q = useQuery({
@@ -42,6 +44,8 @@ export default function LancamentosPage() {
 
   function toggleMes(m) { setExpandMes(p => ({ ...p, [m]: !p[m] })) }
   function toggleDia(k) { setExpandDia(p => ({ ...p, [k]: !p[k] })) }
+  function toggleForn(k) { setExpandForn(p => ({ ...p, [k]: !p[k] })) }
+  function toggleLanc(k) { setExpandLanc(p => ({ ...p, [k]: !p[k] })) }
   function expandAll()  { const a = {}; meses.forEach(m => { a[m.mes] = true }); setExpandMes(a) }
   function collapseAll(){ setExpandMes({}); setExpandDia({}) }
 
@@ -121,6 +125,7 @@ export default function LancamentosPage() {
                         const diaKey = `${M.mes}::${D.dia}`
                         const isDiaOpen = !!expandDia[diaKey]
                         const forns = fb ? D.fornecedores.filter(f => f.nome.toLowerCase().includes(fb)) : D.fornecedores
+                        const temDetalhe = (data.detalheMeses || []).includes(M.mes)
                         return (
                           <div key={D.dia}>
                             {/* Header dia */}
@@ -141,32 +146,106 @@ export default function LancamentosPage() {
                               </div>
                             </div>
 
-                            {/* Fornecedores do dia */}
+                            {/* Fornecedores do dia (expansíveis → lançamentos → programados) */}
                             {isDiaOpen && (
-                              <table className="w-full" style={{ borderCollapse: 'collapse' }}>
-                                <thead>
-                                  <tr style={{ background: 'var(--bg-card2)' }}>
-                                    <th style={{ ...th, textAlign: 'left', paddingLeft: 52 }}>Fornecedor</th>
-                                    <th style={th}>SKUs</th>
-                                    <th style={th}>Peças</th>
-                                    <th style={th}>Valor a Custo</th>
-                                    <th style={th}>Valor a Venda</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {forns.length === 0 ? (
-                                    <tr><td colSpan={5} style={{ padding: '10px 20px 10px 52px', fontSize: 12, color: 'var(--text-dim)' }}>Nenhum fornecedor corresponde ao filtro.</td></tr>
-                                  ) : forns.map((f, i) => (
-                                    <tr key={f.nome} style={{ background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card2)', borderBottom: '1px solid var(--border)' }}>
-                                      <td style={{ padding: '6px 10px 6px 52px', fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>{f.nome}</td>
-                                      <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#00b4d8' }}>{fNum(f.skus)}</td>
-                                      <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#818cf8', fontWeight: 700 }}>{fNum(f.pecas)}</td>
-                                      <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(f.valorCusto)}</td>
-                                      <td style={{ padding: '6px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>{fBRL(f.valorVenda)}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
+                              <div style={{ background: 'var(--bg-card)' }}>
+                                {/* cabeçalho */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 20px 5px 52px', background: 'var(--bg-card2)', borderBottom: '1px solid var(--border)' }}>
+                                  <span style={{ flex: 1, ...thTxt }}>Fornecedor</span>
+                                  <span style={{ width: 70, textAlign: 'center', ...thTxt }}>SKUs</span>
+                                  <span style={{ width: 80, textAlign: 'center', ...thTxt }}>Peças</span>
+                                  <span style={{ width: 120, textAlign: 'right', ...thTxt }}>A Custo</span>
+                                  <span style={{ width: 120, textAlign: 'right', ...thTxt }}>A Venda</span>
+                                </div>
+                                {forns.length === 0 ? (
+                                  <div style={{ padding: '10px 20px 10px 52px', fontSize: 12, color: 'var(--text-dim)' }}>Nenhum fornecedor corresponde ao filtro.</div>
+                                ) : forns.map((f, i) => {
+                                  const fornKey = `${diaKey}::${f.nome}`
+                                  const temDet  = Array.isArray(f.lancs) && f.lancs.length > 0
+                                  const isFornOpen = temDet && !!expandForn[fornKey]
+                                  return (
+                                    <div key={f.nome}>
+                                      {/* Linha do fornecedor */}
+                                      <div onClick={() => temDet && toggleForn(fornKey)} style={{
+                                        display: 'flex', alignItems: 'center', gap: 10, padding: '6px 20px 6px 52px',
+                                        background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card2)', borderBottom: '1px solid var(--border)',
+                                        cursor: temDet ? 'pointer' : 'default',
+                                      }}>
+                                        <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
+                                          <span style={{ color: 'var(--text-muted)', fontSize: 10, width: 10 }}>{temDet ? (isFornOpen ? '▼' : '▶') : ''}</span>
+                                          {f.nome}
+                                        </span>
+                                        <span style={{ width: 70, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#00b4d8' }}>{fNum(f.skus)}</span>
+                                        <span style={{ width: 80, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#818cf8', fontWeight: 700 }}>{fNum(f.pecas)}</span>
+                                        <span style={{ width: 120, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(f.valorCusto)}</span>
+                                        <span style={{ width: 120, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>{fBRL(f.valorVenda)}</span>
+                                      </div>
+
+                                      {/* Lançamentos do fornecedor */}
+                                      {isFornOpen && f.lancs.map(L => {
+                                        const lancKey = `${fornKey}::${L.codigo}`
+                                        const isLancOpen = !!expandLanc[lancKey]
+                                        return (
+                                          <div key={L.codigo}>
+                                            <div onClick={() => toggleLanc(lancKey)} style={{
+                                              display: 'flex', alignItems: 'center', gap: 10, padding: '5px 20px 5px 72px',
+                                              background: 'var(--bg)', borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                                            }}>
+                                              <span style={{ color: 'var(--text-muted)', fontSize: 10, width: 10 }}>{isLancOpen ? '▼' : '▶'}</span>
+                                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lançamento</span>
+                                              <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>#{L.numeroEntrada || L.codigo}</span>
+                                              <StatusBadge status={L.status} />
+                                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{L.itens.length} programado{L.itens.length !== 1 ? 's' : ''}</span>
+                                              <div style={{ marginLeft: 'auto', display: 'flex', gap: 20 }}>
+                                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#818cf8', fontWeight: 700 }}>{fNum(L.pecas)} pç</span>
+                                                <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#a3e635', fontWeight: 700 }}>{fBRL(L.valorCusto)}</span>
+                                              </div>
+                                            </div>
+
+                                            {/* Programados (itens) do lançamento */}
+                                            {isLancOpen && (
+                                              <table className="w-full" style={{ borderCollapse: 'collapse' }}>
+                                                <thead>
+                                                  <tr style={{ background: 'var(--bg-card2)' }}>
+                                                    <th style={{ ...th, textAlign: 'left', paddingLeft: 92 }}>SKU</th>
+                                                    <th style={{ ...th, textAlign: 'left' }}>Descrição</th>
+                                                    <th style={th}>Item</th>
+                                                    <th style={th}>Seq.</th>
+                                                    <th style={th}>Qtd</th>
+                                                    <th style={th}>A Custo</th>
+                                                    <th style={th}>A Venda</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {L.itens.map((it, j) => (
+                                                    <tr key={j} style={{ background: j % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card2)', borderBottom: '1px solid var(--border)' }}>
+                                                      <td style={{ padding: '5px 10px 5px 92px', fontFamily: 'monospace', fontSize: 11, color: '#f5c518', whiteSpace: 'nowrap' }}>{it.sku}</td>
+                                                      <td style={{ padding: '5px 10px', fontSize: 11, color: 'var(--text)' }}>
+                                                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 320 }} title={it.descricao}>{it.descricao}</div>
+                                                      </td>
+                                                      <td style={{ padding: '5px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{it.item}</td>
+                                                      <td style={{ padding: '5px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{it.sequencia}</td>
+                                                      <td style={{ padding: '5px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: '#818cf8', fontWeight: 700 }}>{fNum(it.qtd)}</td>
+                                                      <td style={{ padding: '5px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: '#a3e635', fontWeight: 700 }}>{fBRL(it.valorCusto)}</td>
+                                                      <td style={{ padding: '5px 10px', textAlign: 'center', fontFamily: 'monospace', fontSize: 11, color: '#f5c518', fontWeight: 700 }}>{fBRL(it.valorVenda)}</td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            )}
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                })}
+                                {/* aviso quando o mês não tem drill-down */}
+                                {!temDetalhe && (
+                                  <div style={{ padding: '6px 20px 6px 52px', fontSize: 10, color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                                    Detalhe (lançamento → programados) disponível apenas nos meses mais recentes.
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         )
@@ -209,4 +288,19 @@ function KPI({ label, value, title, color }) {
 const th = {
   padding: '6px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 10,
   borderBottom: '1px solid var(--border)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
+}
+
+const thTxt = {
+  color: 'var(--text-muted)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
+}
+
+function StatusBadge({ status }) {
+  const s = String(status || '').toLowerCase()
+  const efet = s.includes('efetiv') && !s.includes('parcial')
+  const cor = efet ? '#4ade80' : s.includes('parcial') ? '#f5c518' : '#9ca3af'
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, color: cor, border: `1px solid ${cor}`, borderRadius: 4, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+      {status || '—'}
+    </span>
+  )
 }

@@ -605,7 +605,10 @@ async function fetchGerais(emp = 'alinare') {
   const st = S(emp), cfg = EMPRESAS[empValida(emp)]
   if (st.geraisFetching) return st.geraisFetching
   st.geraisFetching = withHeavyLock(emp, async () => {
-    const PAGE = 1000, CONC = 5, MAX_RETRY = 8   // limit=1000: ~4x menos requisições
+    // PAGE=250 e concorrência baixa: páginas de 1000 itens (~8MB) × 5 penduram o
+    // container no Railway (event loop/rede saturados) e derrubam as demais telas.
+    // 250 é o tamanho comprovadamente estável (mesmo do fetch de /Compras).
+    const PAGE = 250, CONC = 3, MAX_RETRY = 8
     const all = []
     let page = 1, emptyStreak = 0
     console.log(`[gerais:${emp}] buscando /Produtos/Gerais…`)
@@ -680,10 +683,19 @@ async function buildLancamentos(emp = 'alinare') {
     let gPecas = 0, gCusto = 0, gVenda = 0
     const gSkus = new Set(), gLanc = new Set(), gForn = new Set()
 
+    // A API /Produtos/Gerais REPETE o mesmo SKU várias vezes (cópias idênticas) —
+    // processar cada SKU uma única vez evita inflar peças/valores em várias vezes.
+    const skusVistos = new Set()
+
     for (const item of gerais) {
       const sku  = item.sku
+      if (sku && skusVistos.has(sku)) continue
+      if (sku) skusVistos.add(sku)
       const info = pm.get(sku) || { custo: 0, preco: 0, forn: '' }
       const forn = (item.nome_fornecedor || info.forn || 'SEM FORNECEDOR').trim() || 'SEM FORNECEDOR'
+      // Cabeçalho de cada lançamento deste SKU (nº da entrada + situação) — p/ o drill-down
+      const hdr = {}
+      for (const l of (Array.isArray(item.lancamentos) ? item.lancamentos : [])) if (l.codigo) hdr[l.codigo] = { numeroEntrada: l.numero_entrada || '', status: l.status || '' }
       const progs = Array.isArray(item.programados) ? item.programados : []
       for (const pr of progs) {
         const d = pr.data_lancamento
@@ -703,12 +715,21 @@ async function buildLancamentos(emp = 'alinare') {
         D.pecas += qtd; D.custo += vc; D.venda += vv; D.skus.add(sku); if (lancId) D.lanc.add(lancId)
 
         let F = D.forn.get(forn)
-        if (!F) { F = { nome: forn, pecas: 0, custo: 0, venda: 0, skus: new Set() }; D.forn.set(forn, F) }
+        if (!F) { F = { nome: forn, pecas: 0, custo: 0, venda: 0, skus: new Set(), lancs: new Map() }; D.forn.set(forn, F) }
         F.pecas += qtd; F.custo += vc; F.venda += vv; F.skus.add(sku)
+
+        // Detalhe lançamento → programados (itens). Cap de 200 itens por lançamento.
+        let L = F.lancs.get(lancId)
+        if (!L) { L = { codigo: lancId, numeroEntrada: hdr[lancId]?.numeroEntrada || '', status: hdr[lancId]?.status || '', pecas: 0, custo: 0, venda: 0, itens: [] }; F.lancs.set(lancId, L) }
+        L.pecas += qtd; L.custo += vc; L.venda += vv
+        if (L.itens.length < 200) L.itens.push({ sku, descricao: item.descricao || '', item: pr.item || '', sequencia: pr.sequencia || '', qtd, valorCusto: round2(vc), valorVenda: round2(vv) })
 
         gPecas += qtd; gCusto += vc; gVenda += vv; gSkus.add(sku); if (lancId) gLanc.add(lancId); gForn.add(forn)
       }
     }
+
+    // Detalhe (lançamento → itens) só para os 3 meses mais recentes — limita o tamanho
+    const mesesRecentes = new Set([...meses.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 3))
 
     const mesesArr = [...meses.values()].sort((a, b) => b.mes.localeCompare(a.mes)).map(M => ({
       mes: M.mes, pecas: M.pecas, valorCusto: round2(M.custo), valorVenda: round2(M.venda),
@@ -718,12 +739,21 @@ async function buildLancamentos(emp = 'alinare') {
         skus: D.skus.size, lancamentos: D.lanc.size,
         fornecedores: [...D.forn.values()].sort((a, b) => b.custo - a.custo).map(F => ({
           nome: F.nome, pecas: F.pecas, valorCusto: round2(F.custo), valorVenda: round2(F.venda), skus: F.skus.size,
+          // Drill-down (lançamentos → programados) só nos meses recentes
+          ...(mesesRecentes.has(M.mes) ? {
+            lancs: [...F.lancs.values()].sort((a, b) => b.custo - a.custo).map(L => ({
+              codigo: L.codigo, numeroEntrada: L.numeroEntrada, status: L.status,
+              pecas: L.pecas, valorCusto: round2(L.custo), valorVenda: round2(L.venda),
+              itens: L.itens.sort((a, b) => b.valorCusto - a.valorCusto),
+            })),
+          } : {}),
         })),
       })),
     }))
 
     const agg = {
       pronto: true, geradoEm: Date.now(),
+      detalheMeses: [...mesesRecentes],   // meses que trazem o drill-down lançamento→programados
       totalGeral: { pecas: gPecas, valorCusto: round2(gCusto), valorVenda: round2(gVenda), skus: gSkus.size, lancamentos: gLanc.size, fornecedores: gForn.size },
       meses: mesesArr,
     }
