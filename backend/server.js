@@ -679,9 +679,23 @@ async function buildLancamentos(emp = 'alinare') {
     const pm = new Map()
     prods.forEach(p => { if (p.produto) pm.set(p.produto, { custo: p._custo || 0, preco: p._preco || 0, forn: p.nomeFornecedor || '' }) })
 
+    // Valores separados por status: 'todos' | 'efetivado' | 'parcial' (permite o
+    // filtro na tela recalcular tudo). Status "outro" (raro) entra só em 'todos'.
+    const statusKey = s => /parcial/i.test(s) ? 'parcial' : (/efetiv/i.test(s) ? 'efetivado' : 'outro')
+    const novoAcc = comForn => ({ pecas: 0, custo: 0, venda: 0, skus: new Set(), lanc: new Set(), ...(comForn ? { forn: new Set() } : {}) })
+    const novoNode = comForn => ({ todos: novoAcc(comForn), efetivado: novoAcc(comForn), parcial: novoAcc(comForn) })
+    const bump = (node, sk, qtd, vc, vv, sku, lancId, forn) => {
+      const alvos = (sk === 'efetivado' || sk === 'parcial') ? ['todos', sk] : ['todos']
+      for (const k of alvos) {
+        const a = node[k]
+        a.pecas += qtd; a.custo += vc; a.venda += vv; a.skus.add(sku); if (lancId) a.lanc.add(lancId); if (a.forn && forn) a.forn.add(forn)
+      }
+    }
+    const serAcc = a => ({ pecas: a.pecas, valorCusto: round2(a.custo), valorVenda: round2(a.venda), skus: a.skus.size, lancamentos: a.lanc.size, ...(a.forn ? { fornecedores: a.forn.size } : {}) })
+    const serNode = node => ({ todos: serAcc(node.todos), efetivado: serAcc(node.efetivado), parcial: serAcc(node.parcial) })
+
     const meses = new Map()
-    let gPecas = 0, gCusto = 0, gVenda = 0
-    const gSkus = new Set(), gLanc = new Set(), gForn = new Set()
+    const G = novoNode(true)   // total geral
 
     // A API /Produtos/Gerais REPETE o mesmo SKU várias vezes (cópias idênticas) —
     // processar cada SKU uma única vez evita inflar peças/valores em várias vezes.
@@ -705,18 +719,19 @@ async function buildLancamentos(emp = 'alinare') {
         const vc = qtd * info.custo, vv = qtd * info.preco
         const mes = d.slice(0, 7), dia = d.slice(0, 10)
         const lancId = pr.lancamento || ''
+        const sk = statusKey(hdr[lancId]?.status || '')
 
         let M = meses.get(mes)
-        if (!M) { M = { mes, pecas: 0, custo: 0, venda: 0, skus: new Set(), lanc: new Set(), forn: new Set(), dias: new Map() }; meses.set(mes, M) }
-        M.pecas += qtd; M.custo += vc; M.venda += vv; M.skus.add(sku); if (lancId) M.lanc.add(lancId); M.forn.add(forn)
+        if (!M) { M = { mes, ...novoNode(true), dias: new Map() }; meses.set(mes, M) }
+        bump(M, sk, qtd, vc, vv, sku, lancId, forn)
 
         let D = M.dias.get(dia)
-        if (!D) { D = { dia, pecas: 0, custo: 0, venda: 0, skus: new Set(), lanc: new Set(), forn: new Map() }; M.dias.set(dia, D) }
-        D.pecas += qtd; D.custo += vc; D.venda += vv; D.skus.add(sku); if (lancId) D.lanc.add(lancId)
+        if (!D) { D = { dia, ...novoNode(true), forn: new Map() }; M.dias.set(dia, D) }
+        bump(D, sk, qtd, vc, vv, sku, lancId, forn)
 
         let F = D.forn.get(forn)
-        if (!F) { F = { nome: forn, pecas: 0, custo: 0, venda: 0, skus: new Set(), lancs: new Map() }; D.forn.set(forn, F) }
-        F.pecas += qtd; F.custo += vc; F.venda += vv; F.skus.add(sku)
+        if (!F) { F = { nome: forn, ...novoNode(false), lancs: new Map() }; D.forn.set(forn, F) }
+        bump(F, sk, qtd, vc, vv, sku, lancId, null)
 
         // Detalhe lançamento → programados (itens). Cap de 200 itens por lançamento.
         let L = F.lancs.get(lancId)
@@ -724,7 +739,7 @@ async function buildLancamentos(emp = 'alinare') {
         L.pecas += qtd; L.custo += vc; L.venda += vv
         if (L.itens.length < 200) L.itens.push({ sku, descricao: item.descricao || '', item: pr.item || '', sequencia: pr.sequencia || '', qtd, valorCusto: round2(vc), valorVenda: round2(vv) })
 
-        gPecas += qtd; gCusto += vc; gVenda += vv; gSkus.add(sku); if (lancId) gLanc.add(lancId); gForn.add(forn)
+        bump(G, sk, qtd, vc, vv, sku, lancId, forn)
       }
     }
 
@@ -732,13 +747,11 @@ async function buildLancamentos(emp = 'alinare') {
     const mesesRecentes = new Set([...meses.keys()].sort((a, b) => b.localeCompare(a)).slice(0, 3))
 
     const mesesArr = [...meses.values()].sort((a, b) => b.mes.localeCompare(a.mes)).map(M => ({
-      mes: M.mes, pecas: M.pecas, valorCusto: round2(M.custo), valorVenda: round2(M.venda),
-      skus: M.skus.size, lancamentos: M.lanc.size, fornecedores: M.forn.size,
+      mes: M.mes, ...serNode(M),
       dias: [...M.dias.values()].sort((a, b) => b.dia.localeCompare(a.dia)).map(D => ({
-        dia: D.dia, pecas: D.pecas, valorCusto: round2(D.custo), valorVenda: round2(D.venda),
-        skus: D.skus.size, lancamentos: D.lanc.size,
-        fornecedores: [...D.forn.values()].sort((a, b) => b.custo - a.custo).map(F => ({
-          nome: F.nome, pecas: F.pecas, valorCusto: round2(F.custo), valorVenda: round2(F.venda), skus: F.skus.size,
+        dia: D.dia, ...serNode(D),
+        fornecedores: [...D.forn.values()].sort((a, b) => b.todos.custo - a.todos.custo).map(F => ({
+          nome: F.nome, ...serNode(F),
           // Drill-down (lançamentos → programados) só nos meses recentes
           ...(mesesRecentes.has(M.mes) ? {
             lancs: [...F.lancs.values()].sort((a, b) => b.custo - a.custo).map(L => ({
@@ -754,12 +767,12 @@ async function buildLancamentos(emp = 'alinare') {
     const agg = {
       pronto: true, geradoEm: Date.now(),
       detalheMeses: [...mesesRecentes],   // meses que trazem o drill-down lançamento→programados
-      totalGeral: { pecas: gPecas, valorCusto: round2(gCusto), valorVenda: round2(gVenda), skus: gSkus.size, lancamentos: gLanc.size, fornecedores: gForn.size },
+      totalGeral: serNode(G),             // { todos, efetivado, parcial }
       meses: mesesArr,
     }
     st.lancAgg = agg; st.lancAggAt = Date.now()
     saveLancDisk(emp, agg)
-    console.log(`[lanc:${emp}] agregado: ${mesesArr.length} meses · ${gPecas} peças · custo ${round2(gCusto)}`)
+    console.log(`[lanc:${emp}] agregado: ${mesesArr.length} meses · ${G.todos.pecas} peças · custo ${round2(G.todos.custo)}`)
     return agg
   } catch (e) {
     console.error(`[lanc:${emp}] erro ao gerar:`, e.message)

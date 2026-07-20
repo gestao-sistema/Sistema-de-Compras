@@ -27,6 +27,7 @@ export default function LancamentosPage() {
   const [expandForn, setExpandForn] = useState({})
   const [expandLanc, setExpandLanc] = useState({})
   const [fornBusca, setFornBusca] = useState('')
+  const [sel, setSel] = useState('todos')   // filtro de status: todos | efetivado | parcial
 
   const q = useQuery({
     queryKey:  ['lancamentos'],
@@ -39,8 +40,15 @@ export default function LancamentosPage() {
   const data     = q.data || {}
   const building  = data.building === true
   const meses     = data.meses || []
-  const total     = data.totalGeral || { pecas: 0, valorCusto: 0, valorVenda: 0, skus: 0, lancamentos: 0, fornecedores: 0 }
   const fb        = fornBusca.trim().toLowerCase()
+
+  // Valores do status selecionado (com fallback p/ o seed antigo em formato plano)
+  const VAZIO = { pecas: 0, valorCusto: 0, valorVenda: 0, skus: 0, lancamentos: 0, fornecedores: 0 }
+  const pick  = node => (node && (node[sel] || node.todos)) || node || VAZIO
+  const total = pick(data.totalGeral)
+  const lancMatch = L => sel === 'todos'
+    ? true
+    : sel === 'parcial' ? /parcial/i.test(L.status) : (/efetiv/i.test(L.status) && !/parcial/i.test(L.status))
 
   function toggleMes(m) { setExpandMes(p => ({ ...p, [m]: !p[m] })) }
   function toggleDia(k) { setExpandDia(p => ({ ...p, [k]: !p[k] })) }
@@ -65,6 +73,20 @@ export default function LancamentosPage() {
       {/* Nota + controles */}
       <div className="card">
         <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Status</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[['todos', 'Todos'], ['efetivado', 'Efetivado'], ['parcial', 'Parcialmente']].map(([k, lbl]) => (
+                <button key={k} onClick={() => setSel(k)}
+                  className="text-xs font-semibold rounded"
+                  style={sel === k
+                    ? { background: k === 'efetivado' ? '#4ade80' : k === 'parcial' ? '#f5c518' : 'var(--accent)', color: '#0d0e16', padding: '6px 12px', border: '1px solid transparent' }
+                    : { background: 'var(--bg-input)', color: 'var(--text-nav)', border: '1px solid var(--border2)', padding: '6px 12px' }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Filtrar fornecedor</div>
             <input value={fornBusca} onChange={e => setFornBusca(e.target.value)} placeholder="Nome do fornecedor…" className="inp text-xs" style={{ width: 220 }} />
@@ -97,8 +119,9 @@ export default function LancamentosPage() {
         ? <div className="state-box"><p>Nenhum lançamento encontrado.</p></div>
         : (
           <div className="space-y-3">
-            {meses.map(M => {
+            {meses.filter(M => pick(M).pecas > 0).map(M => {
               const isMesOpen = !!expandMes[M.mes]
+              const mv = pick(M)
               return (
                 <div key={M.mes} className="card" style={{ padding: 0, overflow: 'hidden' }}>
                   {/* Header mês */}
@@ -112,19 +135,20 @@ export default function LancamentosPage() {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 800, fontSize: 15, color: 'var(--text)' }}>{labelMes(M.mes)}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                        {fNum(M.pecas)} peças · {fNum(M.skus)} SKUs · {fNum(M.lancamentos)} lançamentos · {fNum(M.fornecedores)} fornecedores
+                        {fNum(mv.pecas)} peças · {fNum(mv.skus)} SKUs · {fNum(mv.lancamentos)} lançamentos · {fNum(mv.fornecedores)} fornecedores
                       </div>
                     </div>
-                    <ValoresResumo custo={M.valorCusto} venda={M.valorVenda} />
+                    <ValoresResumo custo={mv.valorCusto} venda={mv.valorVenda} />
                   </div>
 
                   {/* Dias do mês */}
                   {isMesOpen && (
                     <div style={{ borderTop: '1px solid var(--border)' }}>
-                      {M.dias.map(D => {
+                      {M.dias.filter(D => pick(D).pecas > 0).map(D => {
                         const diaKey = `${M.mes}::${D.dia}`
                         const isDiaOpen = !!expandDia[diaKey]
-                        const forns = fb ? D.fornecedores.filter(f => f.nome.toLowerCase().includes(fb)) : D.fornecedores
+                        const dv = pick(D)
+                        const forns = (D.fornecedores || []).filter(f => pick(f).pecas > 0 && (!fb || f.nome.toLowerCase().includes(fb)))
                         const temDetalhe = (data.detalheMeses || []).includes(M.mes)
                         return (
                           <div key={D.dia}>
@@ -138,11 +162,11 @@ export default function LancamentosPage() {
                               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{isDiaOpen ? '▼' : '▶'}</span>
                               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#f5c518', fontSize: 13, width: 48 }}>{labelDia(D.dia)}</span>
                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                                {fNum(D.pecas)} peças · {fNum(D.skus)} SKUs · {fNum(D.fornecedores?.length || 0)} forn.
+                                {fNum(dv.pecas)} peças · {fNum(dv.skus)} SKUs · {fNum(dv.fornecedores ?? forns.length)} forn.
                               </span>
                               <div style={{ marginLeft: 'auto', display: 'flex', gap: 24 }}>
-                                <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(D.valorCusto)}</span>
-                                <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>{fBRL(D.valorVenda)}</span>
+                                <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(dv.valorCusto)}</span>
+                                <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>{fBRL(dv.valorVenda)}</span>
                               </div>
                             </div>
 
@@ -161,7 +185,9 @@ export default function LancamentosPage() {
                                   <div style={{ padding: '10px 20px 10px 52px', fontSize: 12, color: 'var(--text-dim)' }}>Nenhum fornecedor corresponde ao filtro.</div>
                                 ) : forns.map((f, i) => {
                                   const fornKey = `${diaKey}::${f.nome}`
-                                  const temDet  = Array.isArray(f.lancs) && f.lancs.length > 0
+                                  const fv = pick(f)
+                                  const lancsF = (f.lancs || []).filter(lancMatch)
+                                  const temDet  = lancsF.length > 0
                                   const isFornOpen = temDet && !!expandForn[fornKey]
                                   return (
                                     <div key={f.nome}>
@@ -175,14 +201,14 @@ export default function LancamentosPage() {
                                           <span style={{ color: 'var(--text-muted)', fontSize: 10, width: 10 }}>{temDet ? (isFornOpen ? '▼' : '▶') : ''}</span>
                                           {f.nome}
                                         </span>
-                                        <span style={{ width: 70, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#00b4d8' }}>{fNum(f.skus)}</span>
-                                        <span style={{ width: 80, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#818cf8', fontWeight: 700 }}>{fNum(f.pecas)}</span>
-                                        <span style={{ width: 120, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(f.valorCusto)}</span>
-                                        <span style={{ width: 120, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>{fBRL(f.valorVenda)}</span>
+                                        <span style={{ width: 70, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#00b4d8' }}>{fNum(fv.skus)}</span>
+                                        <span style={{ width: 80, textAlign: 'center', fontFamily: 'monospace', fontSize: 12, color: '#818cf8', fontWeight: 700 }}>{fNum(fv.pecas)}</span>
+                                        <span style={{ width: 120, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#a3e635', fontWeight: 700 }}>{fBRL(fv.valorCusto)}</span>
+                                        <span style={{ width: 120, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>{fBRL(fv.valorVenda)}</span>
                                       </div>
 
-                                      {/* Lançamentos do fornecedor */}
-                                      {isFornOpen && f.lancs.map(L => {
+                                      {/* Lançamentos do fornecedor (filtrados pelo status) */}
+                                      {isFornOpen && lancsF.map(L => {
                                         const lancKey = `${fornKey}::${L.codigo}`
                                         const isLancOpen = !!expandLanc[lancKey]
                                         return (
