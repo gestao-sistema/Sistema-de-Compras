@@ -26,6 +26,7 @@ export const api = {
   sugestoes:        ()          => get('/sugestoes'),
   abc:              (params)    => get('/abc', params),
   pedidos:          (params)    => get('/pedidos', params),
+  lancamentos:      ()          => get('/lancamentos'),
   pedidosPorProduto:()          => get('/pedidos/por-produto'),
   fornecedores:     (params)    => get('/fornecedores', params),
   cliente:          (cpfcnpj)   => get('/blip/clientes', { cpfcnpj }),

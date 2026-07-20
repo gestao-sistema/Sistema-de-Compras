@@ -52,6 +52,8 @@ function novoStore() {
     pedidosItens: null, pedidosItensAt: 0,
     fornCache: null, fornCacheAt: 0,
     finCache: null, finCacheAt: 0, finFetching: null,
+    geraisFetching: null,                       // busca de /Produtos/Gerais em andamento
+    lancAgg: null, lancAggAt: 0, lancBuilding: false,  // resumo de lançamentos (agregado)
   }
 }
 const STORES = Object.fromEntries(EMPRESA_IDS.map(e => [e, novoStore()]))
@@ -98,7 +100,11 @@ function loadDiskCache(emp) {
     const tag = age > DISK_MAX_AGE ? 'ANTIGO — atualizando em background' : `${Math.round(age/60000)}min atrás`
     console.log(`[disk:${emp}] cache carregado: ${obj.data.length} produtos (${tag})`)
     S(emp).cache.set('compras_all', { data: obj.data, ts: obj.ts })
-    S(emp).warmState.lastRefreshed = obj.ts  // mostra quando os dados realmente foram buscados
+    // Só define lastRefreshed a partir do disco quando ainda não há um horário melhor —
+    // NUNCA puxa a "Última atualização" para trás (ex.: cair no seed antigo depois de já
+    // ter buscado dados novos faria o Dashboard "voltar" para a data do seed).
+    const lr = S(emp).warmState.lastRefreshed
+    if (!lr || obj.ts > lr) S(emp).warmState.lastRefreshed = obj.ts
     return obj.data
   } catch (e) { console.error(`[disk:${emp}] erro ao ler:`, e.message); return null }
 }
@@ -143,6 +149,18 @@ function parseDateBR(s) {
   return isNaN(d.getTime()) ? null : d.getTime()
 }
 
+// ─── Turno único para os fetches pesados da mesma empresa ─────────────────────
+// Produtos (/Compras) e Lançamentos (/Produtos/Gerais) batem no MESMO servidor da
+// empresa. Rodar os dois ao mesmo tempo satura a API e ambos estouram timeout.
+// Este lock por empresa faz cada busca pesada rodar por vez (turnos), sem disputa.
+function withHeavyLock(emp, fn) {
+  const st = S(emp)
+  const prev = st._heavyLock || Promise.resolve()
+  const run  = prev.then(fn, fn)               // roda fn após o anterior (sucesso ou erro)
+  st._heavyLock = run.then(() => {}, () => {}) // mantém a corrente viva, sem vazar erro
+  return run
+}
+
 // ─── Busca direta da API (sem cache) ─────────────────────────────────────────
 
 async function fetchFromAPI(emp = 'alinare') {
@@ -151,7 +169,7 @@ async function fetchFromAPI(emp = 'alinare') {
   // Se já há uma busca em andamento, aguarda a mesma promise
   if (st.fetching) return st.fetching
 
-  st.fetching = (async () => {
+  st.fetching = withHeavyLock(emp, async () => {
     // Páginas menores: respostas ~2 MB carregam de forma confiável na Railway
     // (páginas de 1000 itens = ~8 MB penduravam a conexão do container).
     const PAGE        = 250
@@ -173,7 +191,7 @@ async function fetchFromAPI(emp = 'alinare') {
           const { data } = await axios.get(url.toString(), {
             headers:    { Token: cfg.token },
             httpsAgent,
-            timeout:    90000,   // falha rápido (90s) se a página pendurar, e re-tenta
+            timeout:    300000,  // 5 min: a API de origem às vezes demora minutos por página
             decompress: true,
           })
           result = Array.isArray(data) ? data : []
@@ -212,7 +230,7 @@ async function fetchFromAPI(emp = 'alinare') {
 
     console.log(`[API:${emp}] total final: ${all.length} produtos pai`)
     return all
-  })().finally(() => { st.fetching = null })
+  }).finally(() => { st.fetching = null })
 
   return st.fetching
 }
@@ -223,6 +241,12 @@ async function fetchAllCompras(emp = 'alinare') {
   const key = 'compras_all'
   const hit = cacheGet(emp, key)
   if (hit) { console.log(`[cache:${emp}] ${hit.length} produtos pai`); return hit }
+
+  // Serve-stale: se já buscamos dados nesta sessão (mesmo com TTL vencido), preferimos
+  // esses aos do seed versionado (antigo). O refreshLoop mantém tudo atualizado em
+  // background — deixar o TTL expirar NÃO deve fazer o app "voltar" para o seed de 07/07.
+  const stale = S(emp).cache.get(key)
+  if (stale && stale.data && stale.data.length) { console.log(`[cache:${emp}] servindo ${stale.data.length} produtos (stale, revalidando em background)`); return stale.data }
 
   const disk = loadDiskCache(emp)
   if (disk) { S(emp).warmState.pais = disk.length; return disk }
@@ -418,6 +442,11 @@ async function getProdutos(emp = 'alinare') {
   const hit = cacheGet(emp, key)
   if (hit) return hit
 
+  // Serve-stale: mantém os últimos produtos enriquecidos mesmo com TTL vencido, em vez
+  // de reconstruir a partir do seed antigo. O refreshLoop reescreve este cache a cada ciclo.
+  const stale = S(emp).cache.get(key)
+  if (stale && stale.data && stale.data.length) return stale.data
+
   const parents = await fetchAllCompras(emp)
   const items   = expandVariacoes(parents, emp)
 
@@ -563,6 +592,169 @@ async function refreshLoop() {
 
 refreshLoop()
 
+// ─── Lançamentos (entradas de estoque) — fonte /Produtos/Gerais ───────────────
+// /Produtos/Gerais traz lancamentos[]/programados[] (com qtd e data), mas NENHUM
+// valor. O valor é calculado cruzando o SKU com custo/preço do cache de produtos.
+// O fetch é lento (~15-20 min completo); por isso só o AGREGADO (pequeno) é
+// persistido em disco e servido — o fetch bruto roda em background.
+
+const round2 = v => Math.round((v || 0) * 100) / 100
+
+// Busca todas as páginas de /Produtos/Gerais (concorrência limitada + retry)
+async function fetchGerais(emp = 'alinare') {
+  const st = S(emp), cfg = EMPRESAS[empValida(emp)]
+  if (st.geraisFetching) return st.geraisFetching
+  st.geraisFetching = withHeavyLock(emp, async () => {
+    const PAGE = 1000, CONC = 5, MAX_RETRY = 8   // limit=1000: ~4x menos requisições
+    const all = []
+    let page = 1, emptyStreak = 0
+    console.log(`[gerais:${emp}] buscando /Produtos/Gerais…`)
+    while (page <= 500 && emptyStreak < 2) {
+      const batch = []
+      for (let i = 0; i < CONC && page <= 500; i++, page++) batch.push(page)
+      const results = await Promise.all(batch.map(async pg => {
+        const url = new URL(`${cfg.base}/Produtos/Gerais`)
+        url.searchParams.set('limit', String(PAGE))
+        url.searchParams.set('page',  String(pg))
+        for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+          try {
+            const { data } = await axios.get(url.toString(), {
+              headers: { Token: cfg.token }, httpsAgent, timeout: 300000, decompress: true,
+            })
+            return Array.isArray(data) ? data : []
+          } catch (e) {
+            await new Promise(r => setTimeout(r, Math.min(1000 * attempt, 10000)))
+          }
+        }
+        console.warn(`[gerais:${emp}] pág ${pg} IGNORADA após ${MAX_RETRY} tentativas`)
+        return []
+      }))
+      const batchTotal = results.reduce((s, r) => s + r.length, 0)
+      results.forEach(r => all.push(...r))
+      console.log(`[gerais:${emp}] págs ${batch[0]}–${batch[batch.length - 1]} → +${batchTotal} (total ${all.length})`)
+      emptyStreak = batchTotal === 0 ? emptyStreak + 1 : 0
+    }
+    console.log(`[gerais:${emp}] total: ${all.length} SKUs`)
+    return all
+  }).finally(() => { st.geraisFetching = null })
+  return st.geraisFetching
+}
+
+function saveLancDisk(emp, agg) {
+  if (!DISK_PERSIST) return
+  try {
+    fs.mkdirSync(CACHE_DIR, { recursive: true })
+    fs.writeFileSync(path.join(CACHE_DIR, `lanc_${empValida(emp)}.json`), JSON.stringify(agg))
+  } catch (e) { console.error(`[lanc:${emp}] erro ao salvar:`, e.message) }
+}
+
+function loadLancDisk(emp) {
+  try {
+    emp = empValida(emp)
+    const runtime = path.join(CACHE_DIR, `lanc_${emp}.json`)          // gerado em runtime (gitignore)
+    const seed    = path.join(__dirname, `lanc_${emp}_seed.json`)     // versionado no repo
+    const f = fs.existsSync(runtime) ? runtime : (fs.existsSync(seed) ? seed : null)
+    if (!f) return null
+    const o = JSON.parse(fs.readFileSync(f, 'utf8'))
+    S(emp).lancAgg = o
+    S(emp).lancAggAt = o.geradoEm || 0
+    console.log(`[lanc:${emp}] agregado carregado (${f === seed ? 'seed' : 'disco'}): ${o.meses?.length || 0} meses`)
+    return o
+  } catch (e) { console.error(`[lanc:${emp}] erro ao ler:`, e.message); return null }
+}
+
+// Monta o resumo agregado: mês → dia → fornecedores, com valor a custo e a venda.
+// Data usada: programado.data_lancamento (sem fallback). Qtd: qtd_transferida.
+async function buildLancamentos(emp = 'alinare') {
+  const st = S(emp)
+  if (st.lancBuilding) return st.lancAgg
+  st.lancBuilding = true
+  try {
+    const [gerais, prods] = await Promise.all([fetchGerais(emp), getProdutos(emp)])
+
+    // mapa SKU → { custo, preço, fornecedor } (do cache de /Compras)
+    const pm = new Map()
+    prods.forEach(p => { if (p.produto) pm.set(p.produto, { custo: p._custo || 0, preco: p._preco || 0, forn: p.nomeFornecedor || '' }) })
+
+    const meses = new Map()
+    let gPecas = 0, gCusto = 0, gVenda = 0
+    const gSkus = new Set(), gLanc = new Set(), gForn = new Set()
+
+    for (const item of gerais) {
+      const sku  = item.sku
+      const info = pm.get(sku) || { custo: 0, preco: 0, forn: '' }
+      const forn = (item.nome_fornecedor || info.forn || 'SEM FORNECEDOR').trim() || 'SEM FORNECEDOR'
+      const progs = Array.isArray(item.programados) ? item.programados : []
+      for (const pr of progs) {
+        const d = pr.data_lancamento
+        if (!d || typeof d !== 'string' || d.length < 10) continue   // data_lancamento apenas
+        const qtd = n(pr.qtd_transferida)
+        if (qtd <= 0) continue
+        const vc = qtd * info.custo, vv = qtd * info.preco
+        const mes = d.slice(0, 7), dia = d.slice(0, 10)
+        const lancId = pr.lancamento || ''
+
+        let M = meses.get(mes)
+        if (!M) { M = { mes, pecas: 0, custo: 0, venda: 0, skus: new Set(), lanc: new Set(), forn: new Set(), dias: new Map() }; meses.set(mes, M) }
+        M.pecas += qtd; M.custo += vc; M.venda += vv; M.skus.add(sku); if (lancId) M.lanc.add(lancId); M.forn.add(forn)
+
+        let D = M.dias.get(dia)
+        if (!D) { D = { dia, pecas: 0, custo: 0, venda: 0, skus: new Set(), lanc: new Set(), forn: new Map() }; M.dias.set(dia, D) }
+        D.pecas += qtd; D.custo += vc; D.venda += vv; D.skus.add(sku); if (lancId) D.lanc.add(lancId)
+
+        let F = D.forn.get(forn)
+        if (!F) { F = { nome: forn, pecas: 0, custo: 0, venda: 0, skus: new Set() }; D.forn.set(forn, F) }
+        F.pecas += qtd; F.custo += vc; F.venda += vv; F.skus.add(sku)
+
+        gPecas += qtd; gCusto += vc; gVenda += vv; gSkus.add(sku); if (lancId) gLanc.add(lancId); gForn.add(forn)
+      }
+    }
+
+    const mesesArr = [...meses.values()].sort((a, b) => b.mes.localeCompare(a.mes)).map(M => ({
+      mes: M.mes, pecas: M.pecas, valorCusto: round2(M.custo), valorVenda: round2(M.venda),
+      skus: M.skus.size, lancamentos: M.lanc.size, fornecedores: M.forn.size,
+      dias: [...M.dias.values()].sort((a, b) => b.dia.localeCompare(a.dia)).map(D => ({
+        dia: D.dia, pecas: D.pecas, valorCusto: round2(D.custo), valorVenda: round2(D.venda),
+        skus: D.skus.size, lancamentos: D.lanc.size,
+        fornecedores: [...D.forn.values()].sort((a, b) => b.custo - a.custo).map(F => ({
+          nome: F.nome, pecas: F.pecas, valorCusto: round2(F.custo), valorVenda: round2(F.venda), skus: F.skus.size,
+        })),
+      })),
+    }))
+
+    const agg = {
+      pronto: true, geradoEm: Date.now(),
+      totalGeral: { pecas: gPecas, valorCusto: round2(gCusto), valorVenda: round2(gVenda), skus: gSkus.size, lancamentos: gLanc.size, fornecedores: gForn.size },
+      meses: mesesArr,
+    }
+    st.lancAgg = agg; st.lancAggAt = Date.now()
+    saveLancDisk(emp, agg)
+    console.log(`[lanc:${emp}] agregado: ${mesesArr.length} meses · ${gPecas} peças · custo ${round2(gCusto)}`)
+    return agg
+  } catch (e) {
+    console.error(`[lanc:${emp}] erro ao gerar:`, e.message)
+    throw e
+  } finally { st.lancBuilding = false }
+}
+
+// Loop contínuo dos lançamentos: gera o resumo e, 10 min APÓS concluir, gera de novo
+// (mesma cadência do refresh de produtos). Carrega do disco no boot para servir na hora.
+loadLancDisk('alinare'); loadLancDisk('novitah')
+const LANC_PAUSE = 3 * 60 * 60 * 1000   // lançamentos: regera 3h após concluir (mudam pouco)
+const _lancLoops = new Set()
+async function lancLoop(emp = 'alinare') {
+  emp = empValida(emp)
+  if (_lancLoops.has(emp)) return
+  _lancLoops.add(emp)
+  while (true) {
+    try { await buildLancamentos(emp) }
+    catch (e) { console.error(`[lanc:${emp}] loop erro:`, e.message) }
+    await new Promise(r => setTimeout(r, LANC_PAUSE))   // espera 3h APÓS concluir
+  }
+}
+// Alinare inicia após 20s (não competir com o warm inicial de produtos); Novitah sob demanda.
+setTimeout(() => lancLoop('alinare'), 20000)
+
 // ─── endpoints ───────────────────────────────────────────────────────────────
 
 // ── Pedidos de compra ────────────────────────────────────────────────────────
@@ -572,7 +764,7 @@ async function fetchPedidos(emp = 'alinare') {
   const st = S(emp), cfg = EMPRESAS[empValida(emp)]
   if (st.pedidosCache && Date.now() - st.pedidosCacheAt < PEDIDOS_TTL) return st.pedidosCache
   const { data } = await axios.get(`${cfg.base}/Compras/Pedidos`, {
-    headers: { Token: cfg.token }, httpsAgent, timeout: 60000,
+    headers: { Token: cfg.token }, httpsAgent, timeout: 300000,
   })
   st.pedidosCache = data
   st.pedidosCacheAt = Date.now()
@@ -942,7 +1134,7 @@ app.get('/api/debug/contar', async (req, res) => {
       url.searchParams.set('limit', '1000')
       url.searchParams.set('page', String(page))
       const { data } = await axios.get(url.toString(), {
-        headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 60000, decompress: true,
+        headers: { Token: COMPRAS_TOKEN }, httpsAgent, timeout: 300000, decompress: true,
       })
       return Array.isArray(data) ? data.length : 0
     }
@@ -1028,6 +1220,20 @@ app.get('/api/compras', async (req, res) => {
     const all = await fetchAllCompras()
     const limit = req.query.limit ? parseInt(req.query.limit) : all.length
     res.json(all.slice(0, limit))
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Resumo de lançamentos (entradas) por mês → dia → fornecedores.
+// Serve o agregado de memória/disco (sempre disponível na hora); o refresh é feito
+// pelo lancLoop (regera 10 min após cada conclusão). Sem cache ainda → { building }.
+app.get('/api/lancamentos', async (req, res) => {
+  try {
+    const emp = empValida(req.query.empresa)
+    const st  = S(emp)
+    if (!_lancLoops.has(emp)) lancLoop(emp)          // garante o loop da empresa acessada
+    const agg = st.lancAgg || loadLancDisk(emp)
+    if (agg) return res.json(agg)
+    return res.json({ pronto: false, building: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -1470,7 +1676,7 @@ app.get('/api/dashboard', async (req, res) => {
 async function blipGet(path, params = {}) {
   const url = new URL(`${BLIP_BASE}${path}`)
   Object.entries(params).forEach(([k, v]) => { if (v != null) url.searchParams.set(k, v) })
-  const { data } = await axios.get(url.toString(), { headers: { Token: BLIP_TOKEN }, httpsAgent, timeout: 20000 })
+  const { data } = await axios.get(url.toString(), { headers: { Token: BLIP_TOKEN }, httpsAgent, timeout: 300000 })
   return data
 }
 

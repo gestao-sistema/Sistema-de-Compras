@@ -14,3 +14,5 @@ shots.mjs
 *.bak
 URLS.txt
 backend/imgcache/
+backend/lanc_alinare.json
+backend/lanc_novitah.json

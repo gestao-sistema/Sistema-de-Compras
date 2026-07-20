@@ -13,6 +13,7 @@ export const PAGINAS = [
   { chave: 'compras',      label: 'Compras' },
   { chave: 'compras.exportar', label: 'Compras › Exportar' },
   { chave: 'pedidos',      label: 'Pedidos' },
+  { chave: 'lancamentos',  label: 'Lançamentos' },
   { chave: 'fornecedores', label: 'Fornecedores' },
   { chave: 'fornecedores.duplicados', label: 'Fornecedores › Duplicados' },
   { chave: 'clientes',     label: 'Clientes' },
