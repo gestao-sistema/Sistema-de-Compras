@@ -771,10 +771,15 @@ async function buildLancamentos(emp = 'alinare') {
 // (mesma cadência do refresh de produtos). Carrega do disco no boot para servir na hora.
 loadLancDisk('alinare'); loadLancDisk('novitah')
 const LANC_PAUSE = 3 * 60 * 60 * 1000   // lançamentos: regera 3h após concluir (mudam pouco)
+// Fetch de lançamentos DESLIGADO por padrão. Ele buscava /Produtos/Gerais no mesmo
+// servidor de /Compras e /Compras/Pedidos e saturava o container do Railway, derrubando
+// Sugestão de Compra e Contas a Receber. A tela serve o SEED versionado. Reativar só
+// depois de garantir que não concorre com os pedidos (LANC_AUTO=1).
+const LANC_AUTO = process.env.LANC_AUTO === '1'
 const _lancLoops = new Set()
 async function lancLoop(emp = 'alinare') {
   emp = empValida(emp)
-  if (_lancLoops.has(emp)) return
+  if (!LANC_AUTO || _lancLoops.has(emp)) return
   _lancLoops.add(emp)
   while (true) {
     try { await buildLancamentos(emp) }
@@ -782,8 +787,7 @@ async function lancLoop(emp = 'alinare') {
     await new Promise(r => setTimeout(r, LANC_PAUSE))   // espera 3h APÓS concluir
   }
 }
-// Alinare inicia após 20s (não competir com o warm inicial de produtos); Novitah sob demanda.
-setTimeout(() => lancLoop('alinare'), 20000)
+if (LANC_AUTO) setTimeout(() => lancLoop('alinare'), 20000)
 
 // ─── endpoints ───────────────────────────────────────────────────────────────
 
@@ -794,7 +798,7 @@ async function fetchPedidos(emp = 'alinare') {
   const st = S(emp), cfg = EMPRESAS[empValida(emp)]
   if (st.pedidosCache && Date.now() - st.pedidosCacheAt < PEDIDOS_TTL) return st.pedidosCache
   const { data } = await axios.get(`${cfg.base}/Compras/Pedidos`, {
-    headers: { Token: cfg.token }, httpsAgent, timeout: 300000,
+    headers: { Token: cfg.token }, httpsAgent, timeout: 60000,   // pedidos está no caminho de /api/produtos — timeout curto p/ não pendurar a página
   })
   st.pedidosCache = data
   st.pedidosCacheAt = Date.now()
