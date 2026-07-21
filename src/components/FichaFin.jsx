@@ -1,5 +1,5 @@
 // Componentes visuais compartilhados pelas fichas financeiras (Cliente e Vendedora)
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { fBRL, fNum } from '../api/client'
 
 export const fMoeda = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0)
@@ -94,70 +94,75 @@ export function GraficoAno({ dados }) {
 // Gráfico de colunas: compras por nº de parcelas. Ao passar o mouse numa barra,
 // mostra um painel com os parcelamentos daquela quantidade (data · cliente · valor).
 export function GraficoParcelas({ dados }) {
-  const [hover, setHover] = useState(null)
+  const [sel, setSel] = useState(null)   // barra selecionada (clique)
+  const rootRef = useRef(null)
+
+  // Clicar fora do gráfico fecha o painel
+  useEffect(() => {
+    if (sel == null) return
+    const onDoc = e => { if (rootRef.current && !rootRef.current.contains(e.target)) setSel(null) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [sel])
+
   const lista = (dados || []).filter(d => d.qtd > 0)
   const totalCompras = lista.reduce((s, d) => s + d.qtd, 0)
   const aVista = lista.filter(d => d.parcelas <= 1).reduce((s, d) => s + d.qtd, 0)
   const barras = lista.filter(d => d.parcelas > 1)   // só parceladas (2x+) — 1x esmagaria o gráfico
   const nParceladas = barras.reduce((s, d) => s + d.qtd, 0)
   const max = Math.max(...barras.map(d => d.qtd), 1)
-  const ativo = barras.find(d => d.parcelas === hover)
+  const ativo = barras.find(d => d.parcelas === sel)
   const itens = (ativo?.itens || [])
-  const topItens = itens.slice(0, 10)
 
   if (!barras.length) return <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Nenhuma compra parcelada — todas à vista ({fNum(aVista)}).</div>
 
   return (
-    <div>
+    <div ref={rootRef}>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
         {fNum(totalCompras)} compras · {fNum(aVista)} à vista · <b style={{ color: '#c084fc' }}>{fNum(nParceladas)} parceladas (2x+)</b>
+        <span style={{ color: 'var(--text-dim)' }}> · clique numa barra para detalhar</span>
       </div>
 
-      {/* Painel-tooltip: detalhes da barra sob o mouse */}
+      {/* Painel: detalhes da barra selecionada (rolável) */}
       <div style={{
-        minHeight: 96, borderRadius: 10, border: '1px solid var(--border2)', background: 'var(--bg-input)',
-        padding: '8px 12px', marginBottom: 10, fontSize: 11.5, transition: 'border-color .15s',
+        minHeight: 96, borderRadius: 10, border: '1px solid', background: 'var(--bg-input)',
+        padding: '8px 12px', marginBottom: 10, fontSize: 11.5,
         borderColor: ativo ? '#a855f7' : 'var(--border2)',
       }}>
         {!ativo ? (
           <div style={{ color: 'var(--text-dim)', display: 'flex', alignItems: 'center', height: 78, justifyContent: 'center' }}>
-            Passe o mouse numa barra para ver as compras (data e cliente)
+            Clique numa barra para ver as compras (data e cliente)
           </div>
         ) : (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
               <span style={{ fontWeight: 800, color: '#c084fc', fontSize: 13 }}>{ativo.parcelas}x</span>
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{fNum(ativo.qtd)} compras · {fBRL(ativo.valor)}</span>
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{fNum(ativo.qtd)} compras · {fBRL(ativo.valor)}
+                <span onClick={() => setSel(null)} style={{ cursor: 'pointer', marginLeft: 10, color: 'var(--text-dim)' }} title="Fechar">✕</span>
+              </span>
             </div>
-            {ativo.parcelas <= 1 ? (
-              <div style={{ color: 'var(--text-dim)' }}>Compras à vista (sem parcelamento).</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 120, overflowY: 'auto' }}>
-                {topItens.map((it, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontFamily: 'monospace', fontSize: 11 }}>
-                    <span style={{ color: '#f5c518', width: 78, flexShrink: 0 }}>{it.data || '—'}</span>
-                    <span style={{ color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.nome}>{it.nome || '—'}</span>
-                    <span style={{ color: '#93c5fd', flexShrink: 0 }}>{fBRL(it.valor)}</span>
-                  </div>
-                ))}
-                {itens.length > topItens.length && (
-                  <div style={{ color: 'var(--text-dim)', fontSize: 10, marginTop: 2 }}>+{fNum(itens.length - topItens.length)} mais…</div>
-                )}
-              </div>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
+              {itens.map((it, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontFamily: 'monospace', fontSize: 11, padding: '1px 0' }}>
+                  <span style={{ color: '#f5c518', width: 82, flexShrink: 0 }}>{it.data || '—'}</span>
+                  <span style={{ color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.nome}>{it.nome || '—'}</span>
+                  <span style={{ color: '#93c5fd', flexShrink: 0 }}>{fBRL(it.valor)}</span>
+                </div>
+              ))}
+            </div>
           </>
         )}
       </div>
 
-      {/* Barras (só 2x+) */}
+      {/* Barras (só 2x+) — clicáveis */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 150, paddingTop: 18, overflowX: 'auto' }}>
         {barras.map(d => {
           const h = Math.max(3, (d.qtd / max) * 110)
-          const on = d.parcelas === hover
+          const on = d.parcelas === sel
           return (
             <div key={d.parcelas}
-              onMouseEnter={() => setHover(d.parcelas)} onMouseLeave={() => setHover(null)}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '1 0 40px', minWidth: 40, cursor: 'default' }}>
+              onClick={() => setSel(s => (s === d.parcelas ? null : d.parcelas))}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '1 0 40px', minWidth: 40, cursor: 'pointer' }}>
               <div style={{ fontSize: 11, color: '#c084fc', fontWeight: 800, fontFamily: 'monospace' }}>{fNum(d.qtd)}</div>
               <div style={{
                 width: '100%', maxWidth: 46, height: h, borderRadius: '6px 6px 0 0',
