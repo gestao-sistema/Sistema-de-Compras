@@ -27,6 +27,7 @@ export default function LancamentosPage() {
   const [expandForn, setExpandForn] = useState({})
   const [expandLanc, setExpandLanc] = useState({})
   const [fornBusca, setFornBusca] = useState('')
+  const [skuBusca, setSkuBusca] = useState('')
   const [sel, setSel] = useState('todos')   // filtro de status: todos | efetivado | parcial
 
   const q = useQuery({
@@ -41,6 +42,7 @@ export default function LancamentosPage() {
   const building  = data.building === true
   const meses     = data.meses || []
   const fb        = fornBusca.trim().toLowerCase()
+  const sb        = skuBusca.trim().toLowerCase()
 
   // Valores do status selecionado (com fallback p/ o seed antigo em formato plano)
   const VAZIO = { pecas: 0, valorCusto: 0, valorVenda: 0, skus: 0, lancamentos: 0, fornecedores: 0 }
@@ -49,6 +51,12 @@ export default function LancamentosPage() {
   const lancMatch = L => sel === 'todos'
     ? true
     : sel === 'parcial' ? /parcial/i.test(L.status) : (/efetiv/i.test(L.status) && !/parcial/i.test(L.status))
+  // Filtro de SKU (código ou descrição) — atua no detalhe (meses recentes)
+  const itemMatch = it => !sb || (it.sku || '').toLowerCase().includes(sb) || (it.descricao || '').toLowerCase().includes(sb)
+  const lancVisivel = L => lancMatch(L) && (!sb || (L.itens || []).some(itemMatch))
+  const fornVisivel = f => pick(f).pecas > 0 && (!fb || f.nome.toLowerCase().includes(fb)) && (!sb || (f.lancs || []).some(lancVisivel))
+  const diaVisivel  = D => pick(D).pecas > 0 && (!sb || (D.fornecedores || []).some(fornVisivel))
+  const mesVisivel  = M => pick(M).pecas > 0 && (!sb || (M.dias || []).some(diaVisivel))
 
   function toggleMes(m) { setExpandMes(p => ({ ...p, [m]: !p[m] })) }
   function toggleDia(k) { setExpandDia(p => ({ ...p, [k]: !p[k] })) }
@@ -89,16 +97,21 @@ export default function LancamentosPage() {
           </div>
           <div>
             <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Filtrar fornecedor</div>
-            <input value={fornBusca} onChange={e => setFornBusca(e.target.value)} placeholder="Nome do fornecedor…" className="inp text-xs" style={{ width: 220 }} />
+            <input value={fornBusca} onChange={e => setFornBusca(e.target.value)} placeholder="Nome do fornecedor…" className="inp text-xs" style={{ width: 200 }} />
           </div>
-          {fb && <button onClick={() => setFornBusca('')} className="btn-ghost text-xs self-end">✕ Limpar</button>}
+          <div>
+            <div className="text-xs uppercase tracking-wider font-semibold mb-1.5" style={{ color: 'var(--text-muted)' }}>Filtrar SKU</div>
+            <input value={skuBusca} onChange={e => setSkuBusca(e.target.value)} placeholder="Código ou descrição…" className="inp text-xs" style={{ width: 200 }} />
+          </div>
+          {(fb || sb) && <button onClick={() => { setFornBusca(''); setSkuBusca('') }} className="btn-ghost text-xs self-end">✕ Limpar</button>}
           <div className="ml-auto flex gap-2 self-end">
             <button onClick={expandAll}   className="btn-ghost text-xs">⊞ Expandir</button>
             <button onClick={collapseAll} className="btn-ghost text-xs">⊟ Recolher</button>
           </div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10 }}>
-          Agrupado por <b>data de lançamento</b> das entradas. Valores calculados sobre o <b>custo</b> e o <b>preço de venda</b> atuais do produto × quantidade lançada.
+          Agrupado por <b>data de lançamento</b> das entradas. Valores sobre o <b>custo</b> e o <b>preço de venda</b> atuais × quantidade lançada.
+          {sb && <span style={{ color: '#f5c518' }}> · Filtro de SKU atua no detalhe (meses mais recentes).</span>}
         </div>
       </div>
 
@@ -119,7 +132,7 @@ export default function LancamentosPage() {
         ? <div className="state-box"><p>Nenhum lançamento encontrado.</p></div>
         : (
           <div className="space-y-3">
-            {meses.filter(M => pick(M).pecas > 0).map(M => {
+            {meses.filter(mesVisivel).map(M => {
               const isMesOpen = !!expandMes[M.mes]
               const mv = pick(M)
               return (
@@ -144,11 +157,11 @@ export default function LancamentosPage() {
                   {/* Dias do mês */}
                   {isMesOpen && (
                     <div style={{ borderTop: '1px solid var(--border)' }}>
-                      {M.dias.filter(D => pick(D).pecas > 0).map(D => {
+                      {M.dias.filter(diaVisivel).map(D => {
                         const diaKey = `${M.mes}::${D.dia}`
                         const isDiaOpen = !!expandDia[diaKey]
                         const dv = pick(D)
-                        const forns = (D.fornecedores || []).filter(f => pick(f).pecas > 0 && (!fb || f.nome.toLowerCase().includes(fb)))
+                        const forns = (D.fornecedores || []).filter(fornVisivel)
                         const temDetalhe = (data.detalheMeses || []).includes(M.mes)
                         return (
                           <div key={D.dia}>
@@ -186,7 +199,7 @@ export default function LancamentosPage() {
                                 ) : forns.map((f, i) => {
                                   const fornKey = `${diaKey}::${f.nome}`
                                   const fv = pick(f)
-                                  const lancsF = (f.lancs || []).filter(lancMatch)
+                                  const lancsF = (f.lancs || []).filter(lancVisivel)
                                   const temDet  = lancsF.length > 0
                                   const isFornOpen = temDet && !!expandForn[fornKey]
                                   return (
@@ -211,6 +224,7 @@ export default function LancamentosPage() {
                                       {isFornOpen && lancsF.map(L => {
                                         const lancKey = `${fornKey}::${L.codigo}`
                                         const isLancOpen = !!expandLanc[lancKey]
+                                        const itensF = (L.itens || []).filter(itemMatch)
                                         return (
                                           <div key={L.codigo}>
                                             <div onClick={() => toggleLanc(lancKey)} style={{
@@ -221,7 +235,7 @@ export default function LancamentosPage() {
                                               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Lançamento</span>
                                               <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#f5c518', fontWeight: 700 }}>#{L.numeroEntrada || L.codigo}</span>
                                               <StatusBadge status={L.status} />
-                                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{L.itens.length} programado{L.itens.length !== 1 ? 's' : ''}</span>
+                                              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{itensF.length} programado{itensF.length !== 1 ? 's' : ''}</span>
                                               <div style={{ marginLeft: 'auto', display: 'flex', gap: 20 }}>
                                                 <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#818cf8', fontWeight: 700 }}>{fNum(L.pecas)} pç</span>
                                                 <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#a3e635', fontWeight: 700 }}>{fBRL(L.valorCusto)}</span>
@@ -243,7 +257,7 @@ export default function LancamentosPage() {
                                                   </tr>
                                                 </thead>
                                                 <tbody>
-                                                  {L.itens.map((it, j) => (
+                                                  {itensF.map((it, j) => (
                                                     <tr key={j} style={{ background: j % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-card2)', borderBottom: '1px solid var(--border)' }}>
                                                       <td style={{ padding: '5px 10px 5px 92px', fontFamily: 'monospace', fontSize: 11, color: '#f5c518', whiteSpace: 'nowrap' }}>{it.sku}</td>
                                                       <td style={{ padding: '5px 10px', fontSize: 11, color: 'var(--text)' }}>

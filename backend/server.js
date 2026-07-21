@@ -2140,6 +2140,27 @@ function parcelaDeConta(c) {
   return [...new Set(nums)].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true })).join('/')
 }
 
+// Formas de cartão (crédito). A fonte não guarda o nº de parcelas do cartão — ele
+// aparece como VÁRIAS entradas de pagamento da mesma bandeira. Inferimos daí.
+const CARTAO_RE = /cr[eé]dito|rede|soulpay|cart[aã]o/i
+// Detalhe das parcelas do cartão. [] quando não é cartão parcelado.
+// Parcelamento real é lançado TUDO na mesma data e mesma bandeira; contas com muitos
+// lançamentos espalhados no tempo (ou > 24) não são parcelamento — viram 1x.
+const MAX_PARCELAS_CARTAO = 24
+function parcelasCartao(c) {
+  if (/nota de cr[eé]dito/i.test(c.Historico || '')) return []   // NC emitida não é venda no cartão
+  const cartao = (c.Pagamentos || []).filter(p => (p.Tipo || '') === 'Entrada' && CARTAO_RE.test(p.FormaPagamento || p.Numerario || ''))
+  if (cartao.length < 2) return []
+  const grupos = {}                                              // bandeira + data de pagamento
+  for (const p of cartao) { const k = (p.FormaPagamento || p.Numerario || '?').trim() + '|' + (p.DataPagamento || ''); (grupos[k] = grupos[k] || []).push(p) }
+  const dom = Object.values(grupos).sort((a, b) => b.length - a.length)[0]
+  if (dom.length < 2 || dom.length > MAX_PARCELAS_CARTAO) return []
+  return dom.map((p, i) => {
+    const v = Number(p.ValorPagoReais) || 0
+    return { parcela: `${i + 1}/${dom.length}`, vencimento: p.DataPagamento || '', pagamento: p.DataPagamento || '', devido: v, recebido: v, pendente: 0, aberto: false, forma: (p.FormaPagamento || p.Numerario || '').trim() }
+  })
+}
+
 function buildFinanceiro(fin, filtros = {}) {
   const vendedoresRaw = Array.isArray(fin?.Vendedores) ? fin.Vendedores : []
   const pagGeral      = Array.isArray(fin?.PagamentoGeral) ? fin.PagamentoGeral : []
@@ -2188,8 +2209,12 @@ function buildFinanceiro(fin, filtros = {}) {
         const saldo = Number(p.SaldoAberto) || 0
         if (saldo > 0) { cPend += saldo; if (!venc) venc = p.VencimentoReal || p.Vencimento || '' }
       }
-      const parcela = parcelaDeConta(c)   // nº quando única, lista quando parcelado
-      const parcelaQtd = parcela ? parcela.split('/').length : 0   // qtd de parcelas (p/ filtro "Nx")
+      // Parcelas: usa as do CARTÃO quando houver (a fonte não as expõe no recebível,
+      // que fica sempre 1x); senão, o parcelamento do recebível (dinheiro/pix/cheque).
+      const parcCartao = parcelasCartao(c)
+      const parcelaRec = parcelaDeConta(c)
+      const parcela = parcCartao.length > 1 ? String(parcCartao.length) : parcelaRec
+      const parcelaQtd = parcCartao.length > 1 ? parcCartao.length : (parcelaRec ? parcelaRec.split('/').length : 0)   // qtd (p/ filtro "Nx")
       const aberto = cPend > 0
       const formas = {}
       let pgData = '', pgDataInt = 0                     // última data de pagamento
@@ -2282,7 +2307,8 @@ function buildFinanceiro(fin, filtros = {}) {
         modalidade: vencidas ? '' : modalidadeConta, parcela,
         devido: cDevido, pago: pagoEf, pend: cPend, total: pagoEf + cPend, aberto,
         notaCredito: impactoNC,   // valor da NC deste título (0 se não for nota de crédito)
-        parcelas: parcelasDet.length > 1 ? parcelasDet : undefined,
+        // Detalhe das parcelas: do cartão quando parcelado; senão do recebível
+        parcelas: parcCartao.length > 1 ? parcCartao : (parcelasDet.length > 1 ? parcelasDet : undefined),
       })
       if (!vencidas) for (const [forma, val] of Object.entries(formas)) {
         cliMap[key].mod[forma]  = (cliMap[key].mod[forma]  || 0) + val
