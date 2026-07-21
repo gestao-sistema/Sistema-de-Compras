@@ -2396,7 +2396,7 @@ function buildClienteDetalhe(fin, codigo, filtros = {}) {
 
   let nome = ''
   let devido = 0, pago = 0, pend = 0, ncTotal = 0, outrosTotal = 0
-  const modMap = {}, mesMap = {}, vendMap = {}, ncPorTipo = {}, outrosPorTipo = {}
+  const modMap = {}, mesMap = {}, vendMap = {}, ncPorTipo = {}, outrosPorTipo = {}, parcMap = {}
   let nTitulos = 0, nAbertas = 0, nVencidas = 0, nPagas = 0
   let primeiraInt = null, ultimaInt = null, primeira = '', ultima = ''
   const contasList = []
@@ -2443,6 +2443,13 @@ function buildClienteDetalhe(fin, codigo, filtros = {}) {
       devido += cDevido; pago += cPago; pend += cPend
       if (ehNC) { ncTotal += contrib; const t = pfxUp || '—'; ncPorTipo[t] = (ncPorTipo[t] || 0) + contrib }
       else if (ehOutroCred) { outrosTotal += contrib; const t = classificaOutroCredito(c.Historico); outrosPorTipo[t] = (outrosPorTipo[t] || 0) + contrib }
+
+      // Distribuição por nº de parcelas (só compras reais) — nº = tamanho do array Parcelas
+      if (!ehNC && !ehOutroCred) {
+        const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
+        if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0 }
+        parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido
+      }
 
       for (const pg of (c.Pagamentos || [])) {
         if ((pg.Tipo || '') !== 'Entrada') continue
@@ -2497,6 +2504,7 @@ function buildClienteDetalhe(fin, codigo, filtros = {}) {
     vendedores: Object.values(vendMap).sort((a, b) => b.total - a.total),
     situacao: { titulos: nTitulos, abertas: nAbertas, vencidas: nVencidas, pagas: nPagas },
     ranking: { posicao: pos, deTotal: ranking.length },
+    parcelasDist: Object.values(parcMap).sort((a, b) => a.parcelas - b.parcelas),
     contas: contasList.sort((a, b) => (brToInt(b.emissao) || 0) - (brToInt(a.emissao) || 0)),
   }
 }

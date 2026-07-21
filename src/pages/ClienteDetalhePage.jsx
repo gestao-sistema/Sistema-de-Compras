@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
-import { fMoeda, Kpi, Badge, FichaHeader, GraficoAno, Modalidades, BarraLinha, VoltarBtn, FiltroDatas, timelinePorAno } from '../components/FichaFin'
+import { fMoeda, Kpi, Badge, FichaHeader, GraficoAno, GraficoParcelas, Modalidades, BarraLinha, VoltarBtn, FiltroDatas, timelinePorAno } from '../components/FichaFin'
 
 export default function ClienteDetalhePage() {
   const { codigo } = useParams()
@@ -69,6 +69,11 @@ export default function ClienteDetalhePage() {
       <div className="card">
         <div className="sec-title">Faturamento por ano</div>
         <GraficoAno dados={porAno} />
+      </div>
+
+      <div className="card">
+        <div className="sec-title">Compras por nº de parcelas</div>
+        <GraficoParcelas dados={d.parcelasDist} />
       </div>
 
       <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>

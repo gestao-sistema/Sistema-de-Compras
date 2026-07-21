@@ -90,6 +90,39 @@ export function GraficoAno({ dados }) {
   )
 }
 
+// Gráfico de colunas: quantidade de compras por nº de parcelas (1x, 2x, 3x…)
+export function GraficoParcelas({ dados }) {
+  const lista = (dados || []).filter(d => d.qtd > 0)
+  if (!lista.length) return <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Sem compras parceladas</div>
+  const max = Math.max(...lista.map(d => d.qtd), 1)
+  const totalCompras = lista.reduce((s, d) => s + d.qtd, 0)
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
+        {fNum(totalCompras)} compras · dividido de {lista[0].parcelas}x a {lista[lista.length - 1].parcelas}x
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 170, paddingTop: 18, overflowX: 'auto' }}>
+        {lista.map(d => {
+          const h = Math.max(3, (d.qtd / max) * 120)
+          const pct = totalCompras > 0 ? (d.qtd / totalCompras) * 100 : 0
+          return (
+            <div key={d.parcelas} title={`${d.parcelas}x · ${fNum(d.qtd)} compras (${fNum(pct, 1)}%) · ${fBRL(d.valor)}`}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '1 0 40px', minWidth: 40 }}>
+              <div style={{ fontSize: 11, color: '#c084fc', fontWeight: 800, fontFamily: 'monospace' }}>{fNum(d.qtd)}</div>
+              <div style={{
+                width: '100%', maxWidth: 46, height: h, borderRadius: '6px 6px 0 0',
+                background: 'linear-gradient(180deg, #d8b4fe 0%, #a855f7 60%, #7c3aed 100%)',
+                boxShadow: '0 0 14px rgba(168,85,247,0.35)',
+              }} />
+              <div style={{ fontSize: 11, color: 'var(--text-sec)', fontWeight: 700, fontFamily: 'monospace' }}>{d.parcelas}x</div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // Barras de modalidade de pagamento
 export function Modalidades({ itens }) {
   if (!itens.length) return <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Sem pagamentos registrados</div>
