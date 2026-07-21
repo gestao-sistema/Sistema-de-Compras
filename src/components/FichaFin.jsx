@@ -91,6 +91,18 @@ export function GraficoAno({ dados }) {
   )
 }
 
+// Chip da modalidade de pagamento (Cheque / Crédito / PIX / …)
+const MOD_COR = { 'Cheque': '#fb923c', 'Crédito': '#a855f7', 'PIX': '#22d3ee', 'Dinheiro': '#4ade80', 'Boleto': '#f5c518', 'Depósito': '#60a5fa' }
+function ModalidadeChip({ m }) {
+  if (!m) return null
+  const cor = MOD_COR[m] || '#94a3b8'
+  return (
+    <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, padding: '1px 7px', borderRadius: 5, color: cor, border: `1px solid ${cor}`, background: `color-mix(in srgb, ${cor} 12%, transparent)`, whiteSpace: 'nowrap' }}>
+      {m}
+    </span>
+  )
+}
+
 // Gráfico de colunas: compras por nº de parcelas. Ao passar o mouse numa barra,
 // mostra um painel com os parcelamentos daquela quantidade (data · cliente · valor).
 export function GraficoParcelas({ dados }) {
@@ -143,9 +155,10 @@ export function GraficoParcelas({ dados }) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto' }}>
               {itens.map((it, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontFamily: 'monospace', fontSize: 11, padding: '1px 0' }}>
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', fontFamily: 'monospace', fontSize: 11, padding: '1px 0' }}>
                   <span style={{ color: '#f5c518', width: 82, flexShrink: 0 }}>{it.data || '—'}</span>
                   <span style={{ color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.nome}>{it.nome || '—'}</span>
+                  <ModalidadeChip m={it.modalidade} />
                   <span style={{ color: 'var(--text-dim)', flexShrink: 0, fontSize: 10 }}>{ativo.parcelas}× {fBRL(it.valor / ativo.parcelas)}</span>
                   <span style={{ color: '#93c5fd', flexShrink: 0, width: 92, textAlign: 'right' }}>{fBRL(it.valor)}</span>
                 </div>

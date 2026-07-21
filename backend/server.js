@@ -2133,6 +2133,25 @@ function classificaOutroCredito(hist) {
   return 'Ajustes'
 }
 
+// Modalidade dominante de um título (para saber se o parcelamento é cheque, crédito…)
+function modalidadeTitulo(c) {
+  const f = {}
+  for (const pg of (c.Pagamentos || [])) {
+    if ((pg.Tipo || '') !== 'Entrada') continue
+    const nm = (pg.FormaPagamento || pg.Numerario || '').trim()
+    if (nm) f[nm] = (f[nm] || 0) + (Number(pg.ValorPagoReais) || 0)
+  }
+  const dom = (Object.entries(f).sort((a, b) => b[1] - a[1])[0] || [''])[0]
+  const u = dom.toUpperCase()
+  if (/CHEQUE/.test(u)) return 'Cheque'
+  if (/CR[EÉ]DITO|REDE|SOULPAY|CART/.test(u)) return 'Crédito'
+  if (/PIX/.test(u)) return 'PIX'
+  if (/DINHEIRO|ESP[EÉ]CIE/.test(u)) return 'Dinheiro'
+  if (/DEP[OÓ]SITO|TRANSFER/.test(u)) return 'Depósito'
+  if (/BOLETO|CARN|DUPLIC/.test(u)) return 'Boleto'
+  return dom || '—'
+}
+
 // Parcela(s) de um título: nº quando única, lista quando parcelado (ex. "01/02/03")
 function parcelaDeConta(c) {
   const nums = []
@@ -2449,7 +2468,7 @@ function buildClienteDetalhe(fin, codigo, filtros = {}) {
         const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
         if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0, itens: [] }
         parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido
-        if (nParc > 1) parcMap[nParc].itens.push({ nome: c.Nome || c.Cliente || '', cliente: c.Cliente || '', data: c.Emissao || '', valor: cDevido, numero: c.Numero || '' })
+        if (nParc > 1) parcMap[nParc].itens.push({ nome: c.Nome || c.Cliente || '', cliente: c.Cliente || '', data: c.Emissao || '', valor: cDevido, numero: c.Numero || '', modalidade: modalidadeTitulo(c) })
       }
 
       for (const pg of (c.Pagamentos || [])) {
@@ -2597,7 +2616,7 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
         const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
         if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0, itens: [] }
         parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido
-        if (nParc > 1) parcMap[nParc].itens.push({ nome: c.Nome || c.Cliente || '', cliente: c.Cliente || '', data: c.Emissao || '', valor: cDevido, numero: c.Numero || '' })
+        if (nParc > 1) parcMap[nParc].itens.push({ nome: c.Nome || c.Cliente || '', cliente: c.Cliente || '', data: c.Emissao || '', valor: cDevido, numero: c.Numero || '', modalidade: modalidadeTitulo(c) })
       }
 
       // agrupa por cliente (top clientes atendidos)
