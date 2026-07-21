@@ -2537,10 +2537,12 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
 
   let nome = ''
   let devido = 0, pago = 0, pend = 0, ncTotal = 0, outrosTotal = 0
-  const modMap = {}, mesMap = {}, cliMap = {}, ncPorTipo = {}, outrosPorTipo = {}
+  const modMap = {}, mesMap = {}, cliMap = {}, ncPorTipo = {}, outrosPorTipo = {}, parcMap = {}
   let nTitulos = 0, nAbertas = 0, nVencidas = 0, nPagas = 0
   let primeiraInt = null, ultimaInt = null, primeira = '', ultima = ''
   const totalPorVendedor = {}   // ranking: total (pago+pend) por vendedor (código, fallback nome)
+  const cliFiltro = String(filtros.cliente || '').trim()   // filtro por cliente (opcional)
+  const cliOpcMap = new Map()   // clientes do vendedor (p/ o dropdown), independente do filtro
 
   for (const v of vendedoresRaw) {
     const vCod  = String(v.Vendedor || '').trim()
@@ -2573,6 +2575,8 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
       if (vCod !== cod) continue
 
       // ── vendedor-alvo ──
+      if (c.Cliente) cliOpcMap.set(c.Cliente, c.Nome || c.Cliente)   // opção do dropdown (todos os clientes)
+      if (cliFiltro && (c.Cliente || '') !== cliFiltro) continue     // filtro por cliente
       if (!nome) nome = vNome
       const aberto = cPend > 0
       const ehNC = /nota de cr[eé]dito/i.test(c.Historico || '')
@@ -2588,6 +2592,13 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
         if ((pg.Tipo || '') !== 'Entrada') continue
         const forma = (pg.FormaPagamento || pg.Numerario || '—').trim()
         modMap[forma] = (modMap[forma] || 0) + (Number(pg.ValorPagoReais) || 0)
+      }
+
+      // Distribuição por nº de parcelas (só compras reais)
+      if (!ehNC && !ehOutroCred) {
+        const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
+        if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0 }
+        parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido
       }
 
       // agrupa por cliente (top clientes atendidos)
@@ -2631,6 +2642,8 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
     clientes: clientes.slice(0, 60),
     situacao: { titulos: nTitulos, abertas: nAbertas, vencidas: nVencidas, pagas: nPagas },
     ranking: { posicao: pos, deTotal: ranking.length },
+    parcelasDist: Object.values(parcMap).sort((a, b) => a.parcelas - b.parcelas),
+    clientesOpc: [...cliOpcMap].map(([codigo, nome]) => ({ codigo, nome })).sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
   }
 }
 
@@ -2641,8 +2654,8 @@ app.get('/api/financeiro/vendedor', async (req, res) => {
     if (!codigo) return res.status(400).json({ error: 'codigo obrigatório' })
     const fin = await fetchFinanceiro(emp)
     if (!fin) return res.json({ carregando: true })
-    const { de, ate, pagDe, pagAte } = req.query
-    res.json(buildVendedorDetalhe(fin, codigo, { de, ate, pagDe, pagAte }))
+    const { de, ate, pagDe, pagAte, cliente } = req.query
+    res.json(buildVendedorDetalhe(fin, codigo, { de, ate, pagDe, pagAte, cliente }))
   } catch (e) {
     res.status(200).json({ erro: e.message })
   }

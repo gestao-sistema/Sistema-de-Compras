@@ -2,16 +2,17 @@ import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
-import { fMoeda, Kpi, Badge, FichaHeader, GraficoAno, Modalidades, VoltarBtn, FiltroDatas, timelinePorAno } from '../components/FichaFin'
+import { fMoeda, Kpi, Badge, FichaHeader, GraficoAno, GraficoParcelas, Modalidades, VoltarBtn, FiltroDatas, timelinePorAno } from '../components/FichaFin'
 
 export default function VendedorDetalhePage() {
   const { codigo } = useParams()
   const navigate = useNavigate()
   const [filtros, setFiltros] = useState({})
+  const [clienteSel, setClienteSel] = useState('')   // filtro por cliente ('' = todas)
 
   const q = useQuery({
-    queryKey: ['financeiro-vendedor', codigo, filtros.de, filtros.ate, filtros.pagDe, filtros.pagAte],
-    queryFn: () => api.financeiroVendedor(codigo, filtros),
+    queryKey: ['financeiro-vendedor', codigo, filtros.de, filtros.ate, filtros.pagDe, filtros.pagAte, clienteSel],
+    queryFn: () => api.financeiroVendedor(codigo, { ...filtros, cliente: clienteSel }),
     staleTime: 5 * 60 * 1000,
     placeholderData: keepPreviousData,
     refetchInterval: d => (d?.carregando ? 4000 : false),
@@ -50,6 +51,19 @@ export default function VendedorDetalhePage() {
 
       <FiltroDatas filtros={filtros} setFiltros={setFiltros} />
 
+      <div className="card flex flex-wrap items-end gap-3">
+        <div style={{ minWidth: 260 }}>
+          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, color: 'var(--accent-title, var(--accent))', marginBottom: 4 }}>Cliente</div>
+          <select value={clienteSel} onChange={e => setClienteSel(e.target.value)} className="inp text-xs" style={{ width: '100%' }}>
+            <option value="">Todas as clientes ({fNum((d.clientesOpc || []).length)})</option>
+            {(d.clientesOpc || []).map(c => (
+              <option key={c.codigo} value={c.codigo}>{c.nome} · #{c.codigo}</option>
+            ))}
+          </select>
+        </div>
+        {clienteSel && <button onClick={() => setClienteSel('')} className="btn-ghost text-xs" style={{ paddingBottom: 6 }}>✕ Ver todas</button>}
+      </div>
+
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
         <Kpi label="Total Faturado" valor={fBRL(t.devido)} sub="histórico" cor="#93c5fd" />
         <Kpi label="Recebido" valor={fBRL(t.pago)} sub="valor pago" cor="#4ade80" />
@@ -69,6 +83,11 @@ export default function VendedorDetalhePage() {
       <div className="card">
         <div className="sec-title">Faturamento por ano</div>
         <GraficoAno dados={porAno} />
+      </div>
+
+      <div className="card">
+        <div className="sec-title">Vendas por nº de parcelas{clienteSel ? ' (cliente filtrado)' : ''}</div>
+        <GraficoParcelas dados={d.parcelasDist} />
       </div>
 
       <div className="card">
