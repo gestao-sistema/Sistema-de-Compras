@@ -2447,8 +2447,9 @@ function buildClienteDetalhe(fin, codigo, filtros = {}) {
       // Distribuição por nº de parcelas (só compras reais) — nº = tamanho do array Parcelas
       if (!ehNC && !ehOutroCred) {
         const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
-        if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0 }
+        if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0, itens: [] }
         parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido
+        if (nParc > 1) parcMap[nParc].itens.push({ nome: c.Nome || c.Cliente || '', cliente: c.Cliente || '', data: c.Emissao || '', valor: cDevido, numero: c.Numero || '' })
       }
 
       for (const pg of (c.Pagamentos || [])) {
@@ -2504,7 +2505,8 @@ function buildClienteDetalhe(fin, codigo, filtros = {}) {
     vendedores: Object.values(vendMap).sort((a, b) => b.total - a.total),
     situacao: { titulos: nTitulos, abertas: nAbertas, vencidas: nVencidas, pagas: nPagas },
     ranking: { posicao: pos, deTotal: ranking.length },
-    parcelasDist: Object.values(parcMap).sort((a, b) => a.parcelas - b.parcelas),
+    parcelasDist: Object.values(parcMap).sort((a, b) => a.parcelas - b.parcelas)
+      .map(b => ({ ...b, itens: (b.itens || []).sort((x, y) => (brToInt(y.data) || 0) - (brToInt(x.data) || 0)) })),
     contas: contasList.sort((a, b) => (brToInt(b.emissao) || 0) - (brToInt(a.emissao) || 0)),
   }
 }
@@ -2541,8 +2543,6 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
   let nTitulos = 0, nAbertas = 0, nVencidas = 0, nPagas = 0
   let primeiraInt = null, ultimaInt = null, primeira = '', ultima = ''
   const totalPorVendedor = {}   // ranking: total (pago+pend) por vendedor (código, fallback nome)
-  const cliFiltro = String(filtros.cliente || '').trim()   // filtro por cliente (opcional)
-  const cliOpcMap = new Map()   // clientes do vendedor (p/ o dropdown), independente do filtro
 
   for (const v of vendedoresRaw) {
     const vCod  = String(v.Vendedor || '').trim()
@@ -2575,8 +2575,6 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
       if (vCod !== cod) continue
 
       // ── vendedor-alvo ──
-      if (c.Cliente) cliOpcMap.set(c.Cliente, c.Nome || c.Cliente)   // opção do dropdown (todos os clientes)
-      if (cliFiltro && (c.Cliente || '') !== cliFiltro) continue     // filtro por cliente
       if (!nome) nome = vNome
       const aberto = cPend > 0
       const ehNC = /nota de cr[eé]dito/i.test(c.Historico || '')
@@ -2597,8 +2595,9 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
       // Distribuição por nº de parcelas (só compras reais)
       if (!ehNC && !ehOutroCred) {
         const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
-        if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0 }
+        if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0, itens: [] }
         parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido
+        if (nParc > 1) parcMap[nParc].itens.push({ nome: c.Nome || c.Cliente || '', cliente: c.Cliente || '', data: c.Emissao || '', valor: cDevido, numero: c.Numero || '' })
       }
 
       // agrupa por cliente (top clientes atendidos)
@@ -2642,8 +2641,8 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
     clientes: clientes.slice(0, 60),
     situacao: { titulos: nTitulos, abertas: nAbertas, vencidas: nVencidas, pagas: nPagas },
     ranking: { posicao: pos, deTotal: ranking.length },
-    parcelasDist: Object.values(parcMap).sort((a, b) => a.parcelas - b.parcelas),
-    clientesOpc: [...cliOpcMap].map(([codigo, nome]) => ({ codigo, nome })).sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR')),
+    parcelasDist: Object.values(parcMap).sort((a, b) => a.parcelas - b.parcelas)
+      .map(b => ({ ...b, itens: (b.itens || []).sort((x, y) => (brToInt(y.data) || 0) - (brToInt(x.data) || 0)) })),
   }
 }
 

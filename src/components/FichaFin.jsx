@@ -1,4 +1,5 @@
 // Componentes visuais compartilhados pelas fichas financeiras (Cliente e Vendedora)
+import { useState } from 'react'
 import { fBRL, fNum } from '../api/client'
 
 export const fMoeda = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v ?? 0)
@@ -90,31 +91,81 @@ export function GraficoAno({ dados }) {
   )
 }
 
-// Gráfico de colunas: quantidade de compras por nº de parcelas (1x, 2x, 3x…)
+// Gráfico de colunas: compras por nº de parcelas. Ao passar o mouse numa barra,
+// mostra um painel com os parcelamentos daquela quantidade (data · cliente · valor).
 export function GraficoParcelas({ dados }) {
+  const [hover, setHover] = useState(null)
   const lista = (dados || []).filter(d => d.qtd > 0)
-  if (!lista.length) return <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Sem compras parceladas</div>
-  const max = Math.max(...lista.map(d => d.qtd), 1)
   const totalCompras = lista.reduce((s, d) => s + d.qtd, 0)
+  const aVista = lista.filter(d => d.parcelas <= 1).reduce((s, d) => s + d.qtd, 0)
+  const barras = lista.filter(d => d.parcelas > 1)   // só parceladas (2x+) — 1x esmagaria o gráfico
+  const nParceladas = barras.reduce((s, d) => s + d.qtd, 0)
+  const max = Math.max(...barras.map(d => d.qtd), 1)
+  const ativo = barras.find(d => d.parcelas === hover)
+  const itens = (ativo?.itens || [])
+  const topItens = itens.slice(0, 10)
+
+  if (!barras.length) return <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Nenhuma compra parcelada — todas à vista ({fNum(aVista)}).</div>
+
   return (
     <div>
       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>
-        {fNum(totalCompras)} compras · dividido de {lista[0].parcelas}x a {lista[lista.length - 1].parcelas}x
+        {fNum(totalCompras)} compras · {fNum(aVista)} à vista · <b style={{ color: '#c084fc' }}>{fNum(nParceladas)} parceladas (2x+)</b>
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 170, paddingTop: 18, overflowX: 'auto' }}>
-        {lista.map(d => {
-          const h = Math.max(3, (d.qtd / max) * 120)
-          const pct = totalCompras > 0 ? (d.qtd / totalCompras) * 100 : 0
+
+      {/* Painel-tooltip: detalhes da barra sob o mouse */}
+      <div style={{
+        minHeight: 96, borderRadius: 10, border: '1px solid var(--border2)', background: 'var(--bg-input)',
+        padding: '8px 12px', marginBottom: 10, fontSize: 11.5, transition: 'border-color .15s',
+        borderColor: ativo ? '#a855f7' : 'var(--border2)',
+      }}>
+        {!ativo ? (
+          <div style={{ color: 'var(--text-dim)', display: 'flex', alignItems: 'center', height: 78, justifyContent: 'center' }}>
+            Passe o mouse numa barra para ver as compras (data e cliente)
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
+              <span style={{ fontWeight: 800, color: '#c084fc', fontSize: 13 }}>{ativo.parcelas}x</span>
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{fNum(ativo.qtd)} compras · {fBRL(ativo.valor)}</span>
+            </div>
+            {ativo.parcelas <= 1 ? (
+              <div style={{ color: 'var(--text-dim)' }}>Compras à vista (sem parcelamento).</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 120, overflowY: 'auto' }}>
+                {topItens.map((it, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontFamily: 'monospace', fontSize: 11 }}>
+                    <span style={{ color: '#f5c518', width: 78, flexShrink: 0 }}>{it.data || '—'}</span>
+                    <span style={{ color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.nome}>{it.nome || '—'}</span>
+                    <span style={{ color: '#93c5fd', flexShrink: 0 }}>{fBRL(it.valor)}</span>
+                  </div>
+                ))}
+                {itens.length > topItens.length && (
+                  <div style={{ color: 'var(--text-dim)', fontSize: 10, marginTop: 2 }}>+{fNum(itens.length - topItens.length)} mais…</div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Barras (só 2x+) */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 150, paddingTop: 18, overflowX: 'auto' }}>
+        {barras.map(d => {
+          const h = Math.max(3, (d.qtd / max) * 110)
+          const on = d.parcelas === hover
           return (
-            <div key={d.parcelas} title={`${d.parcelas}x · ${fNum(d.qtd)} compras (${fNum(pct, 1)}%) · ${fBRL(d.valor)}`}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '1 0 40px', minWidth: 40 }}>
+            <div key={d.parcelas}
+              onMouseEnter={() => setHover(d.parcelas)} onMouseLeave={() => setHover(null)}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '1 0 40px', minWidth: 40, cursor: 'default' }}>
               <div style={{ fontSize: 11, color: '#c084fc', fontWeight: 800, fontFamily: 'monospace' }}>{fNum(d.qtd)}</div>
               <div style={{
                 width: '100%', maxWidth: 46, height: h, borderRadius: '6px 6px 0 0',
                 background: 'linear-gradient(180deg, #d8b4fe 0%, #a855f7 60%, #7c3aed 100%)',
-                boxShadow: '0 0 14px rgba(168,85,247,0.35)',
+                boxShadow: on ? '0 0 16px rgba(168,85,247,0.7)' : '0 0 14px rgba(168,85,247,0.35)',
+                outline: on ? '2px solid #d8b4fe' : 'none',
               }} />
-              <div style={{ fontSize: 11, color: 'var(--text-sec)', fontWeight: 700, fontFamily: 'monospace' }}>{d.parcelas}x</div>
+              <div style={{ fontSize: 11, color: on ? '#d8b4fe' : 'var(--text-sec)', fontWeight: 700, fontFamily: 'monospace' }}>{d.parcelas}x</div>
             </div>
           )
         })}
