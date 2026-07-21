@@ -2445,7 +2445,7 @@ function buildClienteDetalhe(fin, codigo, filtros = {}) {
       else if (ehOutroCred) { outrosTotal += contrib; const t = classificaOutroCredito(c.Historico); outrosPorTipo[t] = (outrosPorTipo[t] || 0) + contrib }
 
       // Distribuição por nº de parcelas (só compras reais) — nº = tamanho do array Parcelas
-      if (!ehNC && !ehOutroCred) {
+      if (!ehNC && !ehOutroCred && cDevido > 0) {   // só compras reais (valor positivo)
         const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
         if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0, itens: [] }
         parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido
@@ -2593,7 +2593,7 @@ function buildVendedorDetalhe(fin, codigo, filtros = {}) {
       }
 
       // Distribuição por nº de parcelas (só compras reais)
-      if (!ehNC && !ehOutroCred) {
+      if (!ehNC && !ehOutroCred && cDevido > 0) {   // só compras reais (valor positivo)
         const nParc = new Set((c.Parcelas || []).map(p => String(p.Parcela || '').trim()).filter(Boolean)).size || 1
         if (!parcMap[nParc]) parcMap[nParc] = { parcelas: nParc, qtd: 0, valor: 0, itens: [] }
         parcMap[nParc].qtd++; parcMap[nParc].valor += cDevido

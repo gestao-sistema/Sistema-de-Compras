@@ -146,7 +146,8 @@ export function GraficoParcelas({ dados }) {
                 <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline', fontFamily: 'monospace', fontSize: 11, padding: '1px 0' }}>
                   <span style={{ color: '#f5c518', width: 82, flexShrink: 0 }}>{it.data || '—'}</span>
                   <span style={{ color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={it.nome}>{it.nome || '—'}</span>
-                  <span style={{ color: '#93c5fd', flexShrink: 0 }}>{fBRL(it.valor)}</span>
+                  <span style={{ color: 'var(--text-dim)', flexShrink: 0, fontSize: 10 }}>{ativo.parcelas}× {fBRL(it.valor / ativo.parcelas)}</span>
+                  <span style={{ color: '#93c5fd', flexShrink: 0, width: 92, textAlign: 'right' }}>{fBRL(it.valor)}</span>
                 </div>
               ))}
             </div>
