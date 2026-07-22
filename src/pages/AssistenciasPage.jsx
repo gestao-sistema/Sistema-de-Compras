@@ -29,6 +29,64 @@ const SEM_FORN = '(sem fornecedor)'  // rótulo p/ linhas sem fornecedor (filtro
 // Entra no SLA? Cancelada e Resíduo NÃO contam (mas seguem na lista). Aberta, Fechada
 // e Devolvida Parcial contam normalmente.
 const contaSla = st => !/cancel|res[ií]duo/i.test(st || '')
+
+// Métricas de assistência a partir de um conjunto de linhas (dedup por OS)
+function computeCards(rows) {
+  const oss = new Map()  // cliente|osCliente -> { aberta, temForn, dias, status }
+  const ossSemForn = new Set()
+  let totalSku = 0, valorAberto = 0, valorFechado = 0
+  for (const r of rows) {
+    totalSku++
+    const key = `${r.cliente}|${r.osCliente}`
+    if (!oss.has(key)) oss.set(key, { aberta: r.aberta, temForn: r.temForn, dias: r.diasEmAberto, status: (r.statusOss || '').trim() })
+    if (!r.fornecedor) ossSemForn.add(r.codigoAssistencia || key)
+    if (r.aberta) valorAberto += r.valorTotal || 0
+    else          valorFechado += r.valorTotal || 0
+  }
+  let ossEncerradas = 0, slaSoma = 0, slaBase = 0
+  const stMap = {}
+  const faixas = { '0-15': 0, '16-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
+  for (const o of oss.values()) {
+    if (!o.aberta) ossEncerradas++
+    const st = o.status || '(sem status)'
+    if (!stMap[st]) stMap[st] = { status: st, oss: 0, somaDias: 0, base: 0 }
+    stMap[st].oss++
+    if (o.dias != null) { stMap[st].somaDias += o.dias; stMap[st].base++ }
+    if (contaSla(o.status) && o.dias != null) {
+      slaSoma += o.dias; slaBase++
+      const dd = o.dias
+      faixas[dd <= 15 ? '0-15' : dd <= 30 ? '16-30' : dd <= 60 ? '31-60' : dd <= 90 ? '61-90' : '90+']++
+    }
+  }
+  const slaPorStatus = Object.values(stMap)
+    .map(s => ({ ...s, sla: s.base ? Math.round(s.somaDias / s.base) : null, contaSla: contaSla(s.status) }))
+    .sort((a, b) => b.oss - a.oss)
+  return {
+    totalOss: oss.size, ossEncerradas, ossSemForn: ossSemForn.size, totalSku,
+    slaMedio: slaBase ? Math.round(slaSoma / slaBase) : 0, slaBase, slaSoma,
+    slaPorStatus,
+    faixas: Object.entries(faixas).map(([faixa, oss]) => ({ faixa, oss })),
+    valorAberto, valorFechado, valorTotal: valorAberto + valorFechado,
+  }
+}
+
+// Ranking por SLA agrupando por uma dimensão (fornecedor ou clienteNome), dedup por OS
+function rankingSla(rows, dimKey) {
+  const grp = {}   // nome -> { nome, ossSet:Set, somaDias, base }
+  const vistos = {} // nome -> Set de OSs já contadas
+  for (const r of rows) {
+    const nome = (r[dimKey] || '(sem)') + ''
+    const osKey = `${r.cliente}|${r.osCliente}`
+    if (!grp[nome]) { grp[nome] = { nome, oss: 0, somaDias: 0, base: 0 }; vistos[nome] = new Set() }
+    if (vistos[nome].has(osKey)) continue
+    vistos[nome].add(osKey)
+    grp[nome].oss++
+    if (contaSla(r.statusOss) && r.diasEmAberto != null) { grp[nome].somaDias += r.diasEmAberto; grp[nome].base++ }
+  }
+  return Object.values(grp)
+    .map(g => ({ ...g, sla: g.base ? Math.round(g.somaDias / g.base) : null }))
+    .sort((a, b) => (b.sla || 0) - (a.sla || 0))
+}
 const UNID = '#f5c518'  // quantidade (amarelo)
 // Identidade de cor por coluna
 const PROD = '#38bdf8'  // Produto  → azul
@@ -43,7 +101,7 @@ export default function AssistenciasPage() {
   const [sortD,  setSortD]  = useState('desc')
   const [pageSize, setPageSize] = useState(50)
   const [page,     setPage]     = useState(0)
-  const [showDash, setShowDash] = useState(false)
+  const [ficha, setFicha] = useState(null)   // { titulo, rows, dim } — ficha/dashboard escopado
 
   const [clienteF,    setClienteF]    = useState([])
   const [fornecedorF, setFornecedorF] = useState([])
@@ -220,61 +278,25 @@ export default function AssistenciasPage() {
   const inicio     = pageSafe * pageSize
   const visiveis   = grupos.slice(inicio, inicio + pageSize)
 
-  // Controle de expansão — accordion: só um fornecedor e um cliente abertos por vez
+  // Controle de expansão — permite VÁRIOS fornecedores/clientes abertos ao mesmo tempo
   const [expFor, setExpFor] = useState(() => new Set())
   const [expCli, setExpCli] = useState(() => new Set())
-  const toggleFor = key => {
-    setExpFor(s => (s.has(key) ? new Set() : new Set([key])))
-    setExpCli(new Set())  // ao trocar de fornecedor, recolhe os clientes
-  }
-  const toggleCli = key => setExpCli(s => (s.has(key) ? new Set() : new Set([key])))
+  const toggleFor = key => setExpFor(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
+  const toggleCli = key => setExpCli(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
   const algumAberto = expFor.size > 0 || expCli.size > 0
   function recolherTudo() { setExpFor(new Set()); setExpCli(new Set()) }
+  // Expande TODOS os fornecedores e TODOS os clientes (visão detalhada completa)
+  function expandirTudo() {
+    setExpFor(new Set(grupos.map(g => g.key)))
+    setExpCli(new Set(grupos.flatMap(g => (g.clientes || []).map(c => c.key))))
+  }
 
   // Volta para a 1ª página quando muda filtro, busca, ordenação ou tamanho de página
   useEffect(() => { setPage(0) },
     [busca, sortK, sortD, clienteF, fornecedorF, servicoF, statusF, operacaoF, osClienteF, osFornF, dataIni, dataFim, pageSize])
 
   // Cards recalculados a partir das linhas filtradas (dedup por OSS)
-  const cards = useMemo(() => {
-    const oss = new Map()  // cliente|osCliente -> { aberta, temForn, dias, status }
-    const ossSemForn = new Set()  // OSs sem fornecedor (mesma definição do grupo "(sem fornecedor)")
-    let totalSku = 0, valorAberto = 0, valorFechado = 0
-    for (const r of filtradas) {
-      totalSku++
-      const key = `${r.cliente}|${r.osCliente}`
-      if (!oss.has(key)) oss.set(key, { aberta: r.aberta, temForn: r.temForn, dias: r.diasEmAberto, status: (r.statusOss || '').trim() })
-      if (!r.fornecedor) ossSemForn.add(r.codigoAssistencia || key)
-      if (r.aberta) valorAberto += r.valorTotal || 0
-      else          valorFechado += r.valorTotal || 0
-    }
-    let ossEncerradas = 0, slaSoma = 0, slaBase = 0
-    const stMap = {}   // status -> { status, oss, somaDias, base }
-    const faixas = { '0-15': 0, '16-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
-    for (const o of oss.values()) {
-      if (!o.aberta) ossEncerradas++       // tem data de encerramento
-      const st = o.status || '(sem status)'
-      if (!stMap[st]) stMap[st] = { status: st, oss: 0, somaDias: 0, base: 0 }
-      stMap[st].oss++
-      if (o.dias != null) { stMap[st].somaDias += o.dias; stMap[st].base++ }
-      // SLA geral: exclui Cancelada/Resíduo (não são fluxo de serviço)
-      if (contaSla(o.status) && o.dias != null) {
-        slaSoma += o.dias; slaBase++
-        const dd = o.dias
-        faixas[dd <= 15 ? '0-15' : dd <= 30 ? '16-30' : dd <= 60 ? '31-60' : dd <= 90 ? '61-90' : '90+']++
-      }
-    }
-    const slaPorStatus = Object.values(stMap)
-      .map(s => ({ ...s, sla: s.base ? Math.round(s.somaDias / s.base) : null, contaSla: contaSla(s.status) }))
-      .sort((a, b) => b.oss - a.oss)
-    return {
-      totalOss: oss.size, ossEncerradas, ossSemForn: ossSemForn.size, totalSku,
-      slaMedio: slaBase ? Math.round(slaSoma / slaBase) : 0, slaBase, slaSoma,
-      slaPorStatus,
-      faixas: Object.entries(faixas).map(([faixa, oss]) => ({ faixa, oss })),
-      valorAberto, valorFechado, valorTotal: valorAberto + valorFechado,
-    }
-  }, [filtradas])
+  const cards = useMemo(() => computeCards(filtradas), [filtradas])
 
   function changeSort(k) {
     if (sortK === k) setSortD(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -292,7 +314,7 @@ export default function AssistenciasPage() {
         {/* Cards */}
         <div className="flex items-center justify-between">
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>Assistência Técnica</div>
-          <button onClick={() => setShowDash(true)} className="text-xs font-bold rounded"
+          <button onClick={() => setFicha({ titulo: 'Geral', rows: filtradas, dim: 'fornecedor' })} className="text-xs font-bold rounded"
             style={{ background: 'var(--accent)', color: 'var(--accent-text)', padding: '7px 14px', border: 'none', cursor: 'pointer' }}>
             📊 Dashboard de SLA
           </button>
@@ -302,7 +324,7 @@ export default function AssistenciasPage() {
           <KPICard label="OS Encerradas"    value={fNum(cards.ossEncerradas)}   sub="com data de encerramento"        color="green"  icon="✓" />
           <KPICard label="OS sem Fornecedor" value={fNum(cards.ossSemForn)}     sub="produto sem fornecedor no serviço" color="orange" icon="◷" />
           <KPICard label="Total SKU"        value={fNum(cards.totalSku)}        sub="itens de produto"                color="purple" icon="◈" />
-          <div onClick={() => setShowDash(true)} style={{ cursor: 'pointer' }} title="Ver dashboard de SLA">
+          <div onClick={() => setFicha({ titulo: 'Geral', rows: filtradas, dim: 'fornecedor' })} style={{ cursor: 'pointer' }} title="Ver dashboard de SLA">
             <KPICard label="SLA"            value={`${fNum(cards.slaMedio)} d`}  sub="média por OS · clique p/ detalhar" color="yellow" icon="⏱" />
           </div>
           <CardValores cards={cards} />
@@ -362,13 +384,14 @@ export default function AssistenciasPage() {
                   {grupos.length > 0 && ` — fornecedores ${fNum(inicio + 1)}–${fNum(inicio + visiveis.length)}`}
                 </p>
                 <div className="flex items-center gap-3">
+                  <button onClick={expandirTudo} className="btn-ghost text-xs">⊞ Expandir tudo</button>
                   {algumAberto && (
-                    <button onClick={recolherTudo} className="btn-ghost text-xs">▾ Recolher tudo</button>
+                    <button onClick={recolherTudo} className="btn-ghost text-xs">⊟ Recolher tudo</button>
                   )}
                   <ExportAssistencias rows={filtradas} />
                 </div>
               </div>
-              <Tabela grupos={visiveis} expFor={expFor} expCli={expCli} onToggleFor={toggleFor} onToggleCli={toggleCli} />
+              <Tabela grupos={visiveis} expFor={expFor} expCli={expCli} onToggleFor={toggleFor} onToggleCli={toggleCli} onFicha={setFicha} />
 
               <div className="flex items-center justify-between mt-3 flex-wrap gap-3">
                 <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-dim)' }}>
@@ -401,29 +424,30 @@ export default function AssistenciasPage() {
           )}
         </div>
       </div>
-      {showDash && <DashAssistencias cards={cards} grupos={grupos} onClose={() => setShowDash(false)} />}
+      {ficha && <DashAssistencias titulo={ficha.titulo} rows={ficha.rows} dim={ficha.dim} onClose={() => setFicha(null)} />}
     </div>
   )
 }
 
-// ─── Dashboard de SLA (modal) ────────────────────────────────────────────────
-function DashAssistencias({ cards, grupos, onClose }) {
-  const stMax = Math.max(...(cards.slaPorStatus || []).map(s => s.oss), 1)
-  const faixaMax = Math.max(...(cards.faixas || []).map(f => f.oss), 1)
-  // Top fornecedores por SLA (maior tempo médio), só com base relevante
-  const topForn = [...(grupos || [])]
-    .filter(g => g.sla != null && g.nProdutos > 0)
-    .sort((a, b) => (b.sla || 0) - (a.sla || 0))
-    .slice(0, 12)
-  const fornMax = Math.max(...topForn.map(g => g.sla || 0), 1)
+// ─── Ficha / Dashboard de SLA (modal) — escopo: Geral, Fornecedor ou Cliente ───
+function DashAssistencias({ titulo, rows, dim, onClose }) {
+  const cards = useMemo(() => computeCards(rows || []), [rows])
+  const ranking = useMemo(() => rankingSla(rows || [], dim || 'fornecedor').filter(g => g.oss > 0).slice(0, 15), [rows, dim])
+  const dimLabel = dim === 'clienteNome' ? 'cliente' : 'fornecedor'
+  const stMax = Math.max(...cards.slaPorStatus.map(s => s.oss), 1)
+  const faixaMax = Math.max(...cards.faixas.map(f => f.oss), 1)
+  const rankMax = Math.max(...ranking.map(g => g.oss), 1)
   const cor = d => (d == null ? 'var(--text-dim)' : d <= 15 ? '#4ade80' : d <= 30 ? '#f5c518' : d <= 60 ? '#fb923c' : '#f87171')
 
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '4vh 16px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} className="card" style={{ width: 'min(920px, 100%)', maxWidth: 920, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>📊 Dashboard de SLA — Assistências</div>
-          <button onClick={onClose} className="btn-ghost text-xs">✕ Fechar</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-dim)' }}>Ficha de SLA — Assistências</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={titulo}>📊 {titulo}</div>
+          </div>
+          <button onClick={onClose} className="btn-ghost text-xs" style={{ flexShrink: 0 }}>✕ Fechar</button>
         </div>
 
         {/* KPIs */}
@@ -472,17 +496,18 @@ function DashAssistencias({ cards, grupos, onClose }) {
             </div>
           </div>
 
-          {/* Top fornecedores por SLA */}
+          {/* Ranking por fornecedor OU cliente (maior SLA) */}
           <div>
-            <div className="sec-title">Fornecedores com maior SLA</div>
+            <div className="sec-title">Maior SLA por {dimLabel}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6, maxHeight: 150, overflowY: 'auto' }}>
-              {topForn.map(g => (
-                <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.fornecedor}>{g.fornecedor}</span>
-                  <div style={{ width: 90, height: 6, borderRadius: 4, background: 'var(--bg-input)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.max(4, ((g.sla || 0) / fornMax) * 100)}%`, background: cor(g.sla), borderRadius: 4 }} />
+              {ranking.length === 0 ? <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>—</div> : ranking.map(g => (
+                <div key={g.nome} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.nome}>{g.nome}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: 'monospace' }}>{fNum(g.oss)} OS</span>
+                  <div style={{ width: 70, height: 6, borderRadius: 4, background: 'var(--bg-input)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.max(4, (g.oss / rankMax) * 100)}%`, background: cor(g.sla), borderRadius: 4 }} />
                   </div>
-                  <span style={{ width: 40, textAlign: 'right', fontFamily: 'monospace', fontSize: 11.5, fontWeight: 700, color: cor(g.sla) }}>{g.sla}d</span>
+                  <span style={{ width: 40, textAlign: 'right', fontFamily: 'monospace', fontSize: 11.5, fontWeight: 700, color: cor(g.sla) }}>{g.sla != null ? `${g.sla}d` : '—'}</span>
                 </div>
               ))}
             </div>
@@ -672,7 +697,7 @@ function garantiaColor(op) {
 
 // ─── Tabela: Fornecedor (topo) → Cliente → Produtos ────────────────────────────
 
-function Tabela({ grupos, expFor, expCli, onToggleFor, onToggleCli }) {
+function Tabela({ grupos, expFor, expCli, onToggleFor, onToggleCli, onFicha }) {
   return (
     <div className="tbl-scroll" style={{ maxHeight: '68vh' }}>
       {grupos.length === 0 && (
@@ -684,30 +709,37 @@ function Tabela({ grupos, expFor, expCli, onToggleFor, onToggleCli }) {
           return (
             <div key={fg.key} style={{ border: '1px solid var(--border2)', borderRadius: 8, overflow: 'hidden' }}>
               {/* Cabeçalho do fornecedor (1ª camada) */}
-              <button onClick={() => onToggleFor(fg.key)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px',
-                         background: aberto ? 'var(--bg-hover)' : 'var(--bg-input)', border: 'none', cursor: 'pointer',
-                         borderLeft: `3px solid ${FORN}`, textAlign: 'left' }}>
-                <span style={{ color: FORN, fontSize: 13, transition: 'transform .15s',
-                               transform: aberto ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div className="cut" style={{ color: FORN, fontWeight: 800, fontSize: 13.5 }} title={fg.fornecedor}>
-                    {fg.fornecedor}
+              <div style={{ display: 'flex', alignItems: 'stretch', background: aberto ? 'var(--bg-hover)' : 'var(--bg-input)', borderLeft: `3px solid ${FORN}` }}>
+                <button onClick={() => onToggleFor(fg.key)}
+                  style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '11px 12px',
+                           background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ color: FORN, fontSize: 13, transition: 'transform .15s',
+                                 transform: aberto ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="cut" style={{ color: FORN, fontWeight: 800, fontSize: 13.5 }} title={fg.fornecedor}>
+                      {fg.fornecedor}
+                    </div>
+                    <div style={{ color: FORN, opacity: 0.7, fontSize: 10.5, fontFamily: 'monospace', fontWeight: 600 }}>
+                      {fNum(fg.clientes.length)} {fg.clientes.length === 1 ? 'cliente' : 'clientes'}
+                      {' · '}{fNum(fg.oss.size)} {fg.oss.size === 1 ? 'OS' : 'OSs'}
+                    </div>
                   </div>
-                  <div style={{ color: FORN, opacity: 0.7, fontSize: 10.5, fontFamily: 'monospace', fontWeight: 600 }}>
-                    {fNum(fg.clientes.length)} {fg.clientes.length === 1 ? 'cliente' : 'clientes'}
-                    {' · '}{fNum(fg.oss.size)} {fg.oss.size === 1 ? 'OS' : 'OSs'}
-                  </div>
-                </div>
-                <ResumoHeader sla={fg.sla} nProdutos={fg.nProdutos} valorServico={fg.valorServico} />
-              </button>
+                  <ResumoHeader sla={fg.sla} nProdutos={fg.nProdutos} valorServico={fg.valorServico} />
+                </button>
+                <button onClick={() => onFicha({ titulo: fg.fornecedor, rows: fg.clientes.flatMap(c => c.rows), dim: 'clienteNome' })}
+                  title="Abrir ficha de SLA do fornecedor"
+                  style={{ flexShrink: 0, alignSelf: 'center', margin: '0 10px', fontSize: 10, fontWeight: 700, padding: '5px 10px', borderRadius: 6,
+                           border: `1px solid ${FORN}`, background: 'transparent', color: FORN, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  📊 Ficha
+                </button>
+              </div>
 
               {/* Clientes do fornecedor (2ª camada) */}
               {aberto && (
                 <div style={{ padding: '6px 8px 8px', display: 'flex', flexDirection: 'column', gap: 5,
                               background: 'var(--bg-card)' }}>
                   {fg.clientes.map(cg => (
-                    <ClienteGrupo key={cg.key} cg={cg} aberto={expCli.has(cg.key)} onToggle={() => onToggleCli(cg.key)} />
+                    <ClienteGrupo key={cg.key} cg={cg} aberto={expCli.has(cg.key)} onToggle={() => onToggleCli(cg.key)} onFicha={onFicha} />
                   ))}
                 </div>
               )}
@@ -741,25 +773,32 @@ function ResumoHeader({ sla, nProdutos, valorServico }) {
 }
 
 // Cliente (2ª camada): setinha expande → tabela de produtos
-function ClienteGrupo({ cg, aberto, onToggle }) {
+function ClienteGrupo({ cg, aberto, onToggle, onFicha }) {
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
-      <button onClick={onToggle}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
-                 background: aberto ? 'var(--bg-hover)' : 'var(--bg-input)', border: 'none', cursor: 'pointer',
-                 borderLeft: `3px solid ${CLI}`, textAlign: 'left' }}>
-        <span style={{ color: CLI, fontSize: 12, transition: 'transform .15s',
-                       transform: aberto ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="cut" style={{ color: CLI, fontWeight: 700, fontSize: 12.5 }} title={cg.clienteNome}>
-            {cg.clienteNome || '(sem nome)'}
+      <div style={{ display: 'flex', alignItems: 'stretch', background: aberto ? 'var(--bg-hover)' : 'var(--bg-input)', borderLeft: `3px solid ${CLI}` }}>
+        <button onClick={onToggle}
+          style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                   background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+          <span style={{ color: CLI, fontSize: 12, transition: 'transform .15s',
+                         transform: aberto ? 'rotate(90deg)' : 'none', flexShrink: 0 }}>▶</span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div className="cut" style={{ color: CLI, fontWeight: 700, fontSize: 12.5 }} title={cg.clienteNome}>
+              {cg.clienteNome || '(sem nome)'}
+            </div>
+            <div style={{ color: CLI, opacity: 0.7, fontSize: 10, fontFamily: 'monospace', fontWeight: 600 }}>
+              #{cg.cliente} · {fNum(cg.oss.size)} {cg.oss.size === 1 ? 'OS' : 'OSs'}
+            </div>
           </div>
-          <div style={{ color: CLI, opacity: 0.7, fontSize: 10, fontFamily: 'monospace', fontWeight: 600 }}>
-            #{cg.cliente} · {fNum(cg.oss.size)} {cg.oss.size === 1 ? 'OS' : 'OSs'}
-          </div>
-        </div>
-        <ResumoHeader sla={cg.sla} nProdutos={cg.rows.length} valorServico={cg.valorServico} />
-      </button>
+          <ResumoHeader sla={cg.sla} nProdutos={cg.rows.length} valorServico={cg.valorServico} />
+        </button>
+        <button onClick={() => onFicha({ titulo: cg.clienteNome || `#${cg.cliente}`, rows: cg.rows, dim: 'fornecedor' })}
+          title="Abrir ficha de SLA do cliente"
+          style={{ flexShrink: 0, alignSelf: 'center', margin: '0 8px', fontSize: 9.5, fontWeight: 700, padding: '4px 9px', borderRadius: 6,
+                   border: `1px solid ${CLI}`, background: 'transparent', color: CLI, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          📊 Ficha
+        </button>
+      </div>
       {aberto && <ProdutosTabela rows={cg.rows} />}
     </div>
   )
