@@ -26,6 +26,9 @@ function toISO(s) {
 }
 
 const SEM_FORN = '(sem fornecedor)'  // rótulo p/ linhas sem fornecedor (filtro e agrupamento)
+// Entra no SLA? Cancelada e Resíduo NÃO contam (mas seguem na lista). Aberta, Fechada
+// e Devolvida Parcial contam normalmente.
+const contaSla = st => !/cancel|res[ií]duo/i.test(st || '')
 const UNID = '#f5c518'  // quantidade (amarelo)
 // Identidade de cor por coluna
 const PROD = '#38bdf8'  // Produto  → azul
@@ -40,6 +43,7 @@ export default function AssistenciasPage() {
   const [sortD,  setSortD]  = useState('desc')
   const [pageSize, setPageSize] = useState(50)
   const [page,     setPage]     = useState(0)
+  const [showDash, setShowDash] = useState(false)
 
   const [clienteF,    setClienteF]    = useState([])
   const [fornecedorF, setFornecedorF] = useState([])
@@ -175,7 +179,7 @@ export default function AssistenciasPage() {
       fg.nProdutos++
       fg.valorProduto += r.valorProduto || 0
       fg.valorServico += r.valorTotal || 0
-      if (r.codigoAssistencia && !fg.oss.has(r.codigoAssistencia)) fg.oss.set(r.codigoAssistencia, r.diasEmAberto)
+      if (r.codigoAssistencia && !fg.oss.has(r.codigoAssistencia)) fg.oss.set(r.codigoAssistencia, { dias: r.diasEmAberto, status: r.statusOss })
 
       const cKey = `${r.cliente}||${r.clienteNome}`
       if (!fg.clientesMap.has(cKey)) {
@@ -188,12 +192,12 @@ export default function AssistenciasPage() {
       cg.rows.push(r)
       cg.valorProduto += r.valorProduto || 0
       cg.valorServico += r.valorTotal || 0
-      if (r.codigoAssistencia && !cg.oss.has(r.codigoAssistencia)) cg.oss.set(r.codigoAssistencia, r.diasEmAberto)
+      if (r.codigoAssistencia && !cg.oss.has(r.codigoAssistencia)) cg.oss.set(r.codigoAssistencia, { dias: r.diasEmAberto, status: r.statusOss })
     }
 
-    // SLA = média de dias em aberto das OSs (dedup por assistência)
+    // SLA = média de dias das OSs (dedup por assistência); exclui Cancelada/Resíduo
     const sla = oss => {
-      const dias = [...oss.values()].filter(d => d != null)
+      const dias = [...oss.values()].filter(o => contaSla(o.status) && o.dias != null).map(o => o.dias)
       return dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null
     }
     const ordItem = (a, b) =>
@@ -233,26 +237,41 @@ export default function AssistenciasPage() {
 
   // Cards recalculados a partir das linhas filtradas (dedup por OSS)
   const cards = useMemo(() => {
-    const oss = new Map()  // cliente|osCliente -> { aberta, temForn, dias }
+    const oss = new Map()  // cliente|osCliente -> { aberta, temForn, dias, status }
     const ossSemForn = new Set()  // OSs sem fornecedor (mesma definição do grupo "(sem fornecedor)")
     let totalSku = 0, valorAberto = 0, valorFechado = 0
     for (const r of filtradas) {
       totalSku++
       const key = `${r.cliente}|${r.osCliente}`
-      if (!oss.has(key)) oss.set(key, { aberta: r.aberta, temForn: r.temForn, dias: r.diasEmAberto })
+      if (!oss.has(key)) oss.set(key, { aberta: r.aberta, temForn: r.temForn, dias: r.diasEmAberto, status: (r.statusOss || '').trim() })
       if (!r.fornecedor) ossSemForn.add(r.codigoAssistencia || key)
       if (r.aberta) valorAberto += r.valorTotal || 0
       else          valorFechado += r.valorTotal || 0
     }
     let ossEncerradas = 0, slaSoma = 0, slaBase = 0
+    const stMap = {}   // status -> { status, oss, somaDias, base }
+    const faixas = { '0-15': 0, '16-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
     for (const o of oss.values()) {
       if (!o.aberta) ossEncerradas++       // tem data de encerramento
-      // SLA = média de dias em aberto de todas as OSS (aberta = até hoje; encerrada = até o retorno)
-      if (o.dias != null) { slaSoma += o.dias; slaBase++ }
+      const st = o.status || '(sem status)'
+      if (!stMap[st]) stMap[st] = { status: st, oss: 0, somaDias: 0, base: 0 }
+      stMap[st].oss++
+      if (o.dias != null) { stMap[st].somaDias += o.dias; stMap[st].base++ }
+      // SLA geral: exclui Cancelada/Resíduo (não são fluxo de serviço)
+      if (contaSla(o.status) && o.dias != null) {
+        slaSoma += o.dias; slaBase++
+        const dd = o.dias
+        faixas[dd <= 15 ? '0-15' : dd <= 30 ? '16-30' : dd <= 60 ? '31-60' : dd <= 90 ? '61-90' : '90+']++
+      }
     }
+    const slaPorStatus = Object.values(stMap)
+      .map(s => ({ ...s, sla: s.base ? Math.round(s.somaDias / s.base) : null, contaSla: contaSla(s.status) }))
+      .sort((a, b) => b.oss - a.oss)
     return {
       totalOss: oss.size, ossEncerradas, ossSemForn: ossSemForn.size, totalSku,
-      slaMedio: slaBase ? Math.round(slaSoma / slaBase) : 0, slaBase,
+      slaMedio: slaBase ? Math.round(slaSoma / slaBase) : 0, slaBase, slaSoma,
+      slaPorStatus,
+      faixas: Object.entries(faixas).map(([faixa, oss]) => ({ faixa, oss })),
       valorAberto, valorFechado, valorTotal: valorAberto + valorFechado,
     }
   }, [filtradas])
@@ -271,12 +290,21 @@ export default function AssistenciasPage() {
     <div>
       <div className="page-body space-y-4">
         {/* Cards */}
+        <div className="flex items-center justify-between">
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>Assistência Técnica</div>
+          <button onClick={() => setShowDash(true)} className="text-xs font-bold rounded"
+            style={{ background: 'var(--accent)', color: 'var(--accent-text)', padding: '7px 14px', border: 'none', cursor: 'pointer' }}>
+            📊 Dashboard de SLA
+          </button>
+        </div>
         <div className="grid gap-3 titulos-dourados" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
           <KPICard label="Total OS"         value={fNum(cards.totalOss)}        sub="todas as OSs"                    color="cyan"   icon="◎" />
           <KPICard label="OS Encerradas"    value={fNum(cards.ossEncerradas)}   sub="com data de encerramento"        color="green"  icon="✓" />
           <KPICard label="OS sem Fornecedor" value={fNum(cards.ossSemForn)}     sub="produto sem fornecedor no serviço" color="orange" icon="◷" />
           <KPICard label="Total SKU"        value={fNum(cards.totalSku)}        sub="itens de produto"                color="purple" icon="◈" />
-          <KPICard label="SLA"              value={`${fNum(cards.slaMedio)} d`}  sub="média de dias em aberto"         color="yellow" icon="⏱" />
+          <div onClick={() => setShowDash(true)} style={{ cursor: 'pointer' }} title="Ver dashboard de SLA">
+            <KPICard label="SLA"            value={`${fNum(cards.slaMedio)} d`}  sub="média por OS · clique p/ detalhar" color="yellow" icon="⏱" />
+          </div>
           <CardValores cards={cards} />
         </div>
 
@@ -373,6 +401,108 @@ export default function AssistenciasPage() {
           )}
         </div>
       </div>
+      {showDash && <DashAssistencias cards={cards} grupos={grupos} onClose={() => setShowDash(false)} />}
+    </div>
+  )
+}
+
+// ─── Dashboard de SLA (modal) ────────────────────────────────────────────────
+function DashAssistencias({ cards, grupos, onClose }) {
+  const stMax = Math.max(...(cards.slaPorStatus || []).map(s => s.oss), 1)
+  const faixaMax = Math.max(...(cards.faixas || []).map(f => f.oss), 1)
+  // Top fornecedores por SLA (maior tempo médio), só com base relevante
+  const topForn = [...(grupos || [])]
+    .filter(g => g.sla != null && g.nProdutos > 0)
+    .sort((a, b) => (b.sla || 0) - (a.sla || 0))
+    .slice(0, 12)
+  const fornMax = Math.max(...topForn.map(g => g.sla || 0), 1)
+  const cor = d => (d == null ? 'var(--text-dim)' : d <= 15 ? '#4ade80' : d <= 30 ? '#f5c518' : d <= 60 ? '#fb923c' : '#f87171')
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '4vh 16px', overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} className="card" style={{ width: 'min(920px, 100%)', maxWidth: 920, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>📊 Dashboard de SLA — Assistências</div>
+          <button onClick={onClose} className="btn-ghost text-xs">✕ Fechar</button>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <DashKpi label="SLA médio" value={`${fNum(cards.slaMedio)} d`} sub={`${fNum(cards.slaBase)} OSs no SLA`} cor="#f5c518" />
+          <DashKpi label="Total OSs" value={fNum(cards.totalOss)} sub={`${fNum(cards.ossEncerradas)} encerradas`} cor="#22d3ee" />
+          <DashKpi label="Soma de dias" value={fNum(cards.slaSoma)} sub="dias em aberto (fluxo)" cor="#c084fc" />
+          <DashKpi label="Valor total" value={fBRL(cards.valorTotal)} sub={`${fBRL(cards.valorAberto)} em aberto`} cor="#a3e635" />
+        </div>
+
+        {/* SLA por situação da OS */}
+        <div>
+          <div className="sec-title">SLA por situação da OS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 6 }}>
+            {(cards.slaPorStatus || []).map(s => (
+              <div key={s.status} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 150, flexShrink: 0, fontSize: 11.5, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.status}>
+                  {s.status}{!s.contaSla && <span style={{ color: 'var(--text-dim)', fontSize: 10 }}> (fora do SLA)</span>}
+                </span>
+                <div style={{ flex: 1, height: 18, borderRadius: 5, background: 'var(--bg-input)', overflow: 'hidden', opacity: s.contaSla ? 1 : 0.5 }}>
+                  <div style={{ height: '100%', width: `${Math.max(3, (s.oss / stMax) * 100)}%`, background: cor(s.sla), borderRadius: 5 }} />
+                </div>
+                <span style={{ width: 66, textAlign: 'right', fontFamily: 'monospace', fontSize: 11.5, color: 'var(--text-muted)' }}>{fNum(s.oss)} OS</span>
+                <span style={{ width: 52, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: cor(s.sla) }}>{s.sla != null ? `${s.sla}d` : '—'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          {/* Distribuição por faixa de dias */}
+          <div>
+            <div className="sec-title">OSs por tempo em aberto</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 130, paddingTop: 16 }}>
+              {(cards.faixas || []).map(f => {
+                const h = Math.max(3, (f.oss / faixaMax) * 96)
+                const c = f.faixa === '0-15' ? '#4ade80' : f.faixa === '16-30' ? '#f5c518' : f.faixa === '31-60' ? '#fb923c' : '#f87171'
+                return (
+                  <div key={f.faixa} title={`${f.faixa} dias · ${fNum(f.oss)} OSs`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <div style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color: c }}>{fNum(f.oss)}</div>
+                    <div style={{ width: '100%', maxWidth: 40, height: h, borderRadius: '5px 5px 0 0', background: c }} />
+                    <div style={{ fontSize: 10, color: 'var(--text-sec)', fontFamily: 'monospace' }}>{f.faixa}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Top fornecedores por SLA */}
+          <div>
+            <div className="sec-title">Fornecedores com maior SLA</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6, maxHeight: 150, overflowY: 'auto' }}>
+              {topForn.map(g => (
+                <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ flex: 1, fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.fornecedor}>{g.fornecedor}</span>
+                  <div style={{ width: 90, height: 6, borderRadius: 4, background: 'var(--bg-input)', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.max(4, ((g.sla || 0) / fornMax) * 100)}%`, background: cor(g.sla), borderRadius: 4 }} />
+                  </div>
+                  <span style={{ width: 40, textAlign: 'right', fontFamily: 'monospace', fontSize: 11.5, fontWeight: 700, color: cor(g.sla) }}>{g.sla}d</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+          SLA = média de dias por OS (aberta: entrada→hoje; fechada: entrada→encerramento). Canceladas e Resíduo não entram no SLA.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DashKpi({ label, value, sub, cor }) {
+  return (
+    <div style={{ background: 'var(--bg-input)', border: '1px solid var(--border2)', borderRadius: 10, padding: '10px 12px', borderTop: `2px solid ${cor}` }}>
+      <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: cor, fontFamily: 'monospace', margin: '2px 0' }}>{value}</div>
+      <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>{sub}</div>
     </div>
   )
 }
