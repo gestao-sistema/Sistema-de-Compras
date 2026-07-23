@@ -69,18 +69,6 @@ export default function AssistenciasSlaPage() {
     return Object.values(m).sort((a, b) => b.dia.localeCompare(a.dia))
   }, [base])
 
-  const kpis = useMemo(() => {
-    const comDias = oss.filter(o => o.dias != null)
-    const fora = comDias.filter(o => o.fora).length
-    const sla = comDias.length ? Math.round(comDias.reduce((s, o) => s + o.dias, 0) / comDias.length) : 0
-    return {
-      total: oss.length,
-      abertas: oss.filter(o => o.aberta).length,
-      entregues: oss.filter(o => !o.aberta).length,
-      fora, noPrazo: comDias.length - fora, sla,
-    }
-  }, [oss])
-
   // OS entra no filtro de dia se ENTROU ou SAIU dentro do intervalo
   const noDia = o => {
     if (!diaDe && !diaAte) return true
@@ -89,6 +77,19 @@ export default function AssistenciasSlaPage() {
     return dentro(e) || dentro(s)
   }
   const lista = useMemo(() => [...base.filter(noDia)].sort((a, b) => (b.dias || 0) - (a.dias || 0)), [base, diaDe, diaAte])
+
+  // KPIs seguem a MESMA lógica dos filtros (refletem exatamente a lista exibida)
+  const kpis = useMemo(() => {
+    const comDias = lista.filter(o => o.dias != null)
+    const fora = comDias.filter(o => o.fora).length
+    const sla = comDias.length ? Math.round(comDias.reduce((s, o) => s + o.dias, 0) / comDias.length) : 0
+    return {
+      total: lista.length,
+      abertas: lista.filter(o => o.aberta).length,
+      entregues: lista.filter(o => !o.aberta).length,
+      fora, noPrazo: comDias.length - fora, sla,
+    }
+  }, [lista])
 
   if (q.isLoading) {
     return <div className="page-body space-y-4"><Voltar navigate={navigate} /><div className="state-box"><div className="spinner" /><p>Carregando SLA…</p></div></div>
