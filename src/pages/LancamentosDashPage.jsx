@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
@@ -15,8 +15,8 @@ export default function LancamentosDashPage() {
   const [sel, setSel] = useState('todos')      // todos | efetivado | parcial
   const [metrica, setMetrica] = useState('valorCusto')  // valorCusto | valorVenda | pecas
   const [granul, setGranul] = useState('mes')  // ano | mes | dia — granularidade do gráfico
-  const [anoF, setAnoF] = useState('')         // '' = todos
-  const [mesF, setMesF] = useState('')         // '' = todos (YYYY-MM)
+  const [anoSel, setAnoSel] = useState([])     // anos marcados ([] = todos)
+  const [mesSel, setMesSel] = useState([])     // meses marcados YYYY-MM ([] = todos)
 
   const q = useQuery({
     queryKey: ['lancamentos'],
@@ -66,9 +66,10 @@ export default function LancamentosDashPage() {
 
   // Série do gráfico: agrupa os dias por ano/mês/dia, aplicando os filtros de ano e mês
   const serie = useMemo(() => {
+    const anoSet = new Set(anoSel), mesSet = new Set(mesSel)
     let src = porDia
-    if (anoF) src = src.filter(d => (d.dia || '').slice(0, 4) === anoF)
-    if (mesF) src = src.filter(d => (d.dia || '').slice(0, 7) === mesF)
+    if (anoSet.size) src = src.filter(d => anoSet.has((d.dia || '').slice(0, 4)))
+    if (mesSet.size) src = src.filter(d => mesSet.has((d.dia || '').slice(0, 7)))
     const keyOf = d => granul === 'ano' ? d.dia.slice(0, 4) : granul === 'mes' ? d.dia.slice(0, 7) : d.dia
     const g = {}
     for (const d of src) {
@@ -78,7 +79,7 @@ export default function LancamentosDashPage() {
     }
     const rotOf = k => granul === 'ano' ? k : granul === 'mes' ? labelMes(k) : labelDia(k)
     return Object.values(g).sort((a, b) => b.key.localeCompare(a.key)).map(s => ({ ...s, rot: rotOf(s.key) }))
-  }, [porDia, granul, anoF, mesF])
+  }, [porDia, granul, anoSel, mesSel])
   const serieMax = Math.max(...serie.map(s => s[metrica]), 1)
   const fornMax = Math.max(...porForn.map(f => f[metrica]), 1)
   const th = { padding: '8px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--accent-title, var(--accent))', position: 'sticky', top: 0, background: 'var(--bg-input)', whiteSpace: 'nowrap' }
@@ -129,15 +130,10 @@ export default function LancamentosDashPage() {
               <FBtn on={granul === 'mes'} onClick={() => setGranul('mes')} label="Mensal" />
               <FBtn on={granul === 'dia'} onClick={() => setGranul('dia')} label="Diário" />
             </div>
-            <select value={anoF} onChange={e => setAnoF(e.target.value)} className="inp text-xs" style={{ minWidth: 110 }}>
-              <option value="">Todos os anos</option>
-              {anosOpc.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-            <select value={mesF} onChange={e => setMesF(e.target.value)} className="inp text-xs" style={{ minWidth: 130 }}>
-              <option value="">Todos os meses</option>
-              {mesesOpc.filter(m => !anoF || m.slice(0, 4) === anoF).map(m => <option key={m} value={m}>{labelMes(m)}</option>)}
-            </select>
-            {(anoF || mesF) && <button onClick={() => { setAnoF(''); setMesF('') }} className="btn-ghost text-xs">✕</button>}
+            <MultiCheck label="Todos os anos" value={anoSel} onChange={setAnoSel} options={anosOpc} width={116} />
+            <MultiCheck label="Todos os meses" value={mesSel} onChange={setMesSel} fmt={labelMes} width={148}
+              options={mesesOpc.filter(m => !anoSel.length || anoSel.includes(m.slice(0, 4)))} />
+            {(anoSel.length || mesSel.length) && <button onClick={() => { setAnoSel([]); setMesSel([]) }} className="btn-ghost text-xs">✕</button>}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 200, paddingTop: 22, overflowX: 'auto' }}>
@@ -223,6 +219,48 @@ function Kpi({ label, value, title, cor }) {
     </div>
   )
 }
+// Dropdown de multi-seleção com checkbox
+function MultiCheck({ label, value, onChange, options, fmt = o => o, width = 140 }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [open])
+  const sel = new Set(value)
+  const toggle = o => sel.has(o) ? onChange(value.filter(x => x !== o)) : onChange([...value, o])
+  const resumo = value.length === 0 ? label : value.length === 1 ? fmt(value[0]) : `${value.length} selecionados`
+  return (
+    <div ref={ref} style={{ position: 'relative', minWidth: width }}>
+      <button onClick={() => setOpen(o => !o)} className="inp text-xs"
+        style={{ width: '100%', textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resumo}</span>
+        <span style={{ color: 'var(--text-dim)', flexShrink: 0 }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, minWidth: '100%', zIndex: 50, marginTop: 2, background: 'var(--bg-card)', border: '1px solid var(--border2)', borderRadius: 6, maxHeight: 260, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,.35)' }}>
+          {value.length > 0 && (
+            <div onMouseDown={e => { e.preventDefault(); onChange([]) }} style={{ padding: '6px 10px', fontSize: 11, color: '#f87171', cursor: 'pointer', borderBottom: '1px solid var(--border)' }}>✕ Limpar ({value.length})</div>
+          )}
+          {options.map(o => {
+            const c = sel.has(o)
+            return (
+              <div key={o} onMouseDown={e => { e.preventDefault(); toggle(o) }}
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', background: c ? 'var(--bg-hover)' : 'transparent', color: c ? 'var(--text)' : 'var(--text-nav)' }}>
+                <input type="checkbox" checked={c} readOnly tabIndex={-1} style={{ accentColor: 'var(--accent)', pointerEvents: 'none', flexShrink: 0 }} />
+                <span>{fmt(o)}</span>
+              </div>
+            )
+          })}
+          {options.length === 0 && <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-dim)' }}>—</div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const lbl = { fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, color: 'var(--accent-title, var(--accent))', marginBottom: 5 }
 function FBtn({ on, onClick, label, cor }) {
   return (
