@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 
@@ -22,6 +23,7 @@ const fNumc = v => {
 }
 
 export default function LancamentosPage() {
+  const navigate = useNavigate()
   const [expandMes, setExpandMes] = useState({})
   const [expandDia, setExpandDia] = useState({})
   const [expandForn, setExpandForn] = useState({})
@@ -67,6 +69,14 @@ export default function LancamentosPage() {
 
   return (
     <div className="page-body space-y-4">
+
+      <div className="flex items-center justify-between">
+        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>Lançamentos (entradas)</div>
+        <button onClick={() => navigate('/lancamentos/dash')} className="text-xs font-bold rounded"
+          style={{ background: 'var(--accent)', color: 'var(--accent-text)', padding: '7px 14px', border: 'none', cursor: 'pointer' }}>
+          📊 Dashboard
+        </button>
+      </div>
 
       {/* KPIs */}
       <div className="flex flex-wrap gap-4">

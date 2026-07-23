@@ -13,6 +13,7 @@ import AssistenciasPage from './pages/AssistenciasPage'
 import AssistenciasSlaPage from './pages/AssistenciasSlaPage'
 import PedidosPage from './pages/PedidosPage'
 import LancamentosPage from './pages/LancamentosPage'
+import LancamentosDashPage from './pages/LancamentosDashPage'
 import FornecedorPage from './pages/FornecedorPage'
 import AdminPage from './pages/AdminPage'
 import LoginPage from './pages/LoginPage'
@@ -44,6 +45,7 @@ function AppRoutes() {
         <Route path="compras"      element={<PrivateRoute chave="compras"><ComprasPage /></PrivateRoute>} />
         <Route path="pedidos"      element={<PrivateRoute chave="pedidos"><PedidosPage /></PrivateRoute>} />
         <Route path="lancamentos"  element={<PrivateRoute chave="lancamentos"><LancamentosPage /></PrivateRoute>} />
+        <Route path="lancamentos/dash" element={<PrivateRoute chave="lancamentos"><LancamentosDashPage /></PrivateRoute>} />
         <Route path="fornecedores" element={<PrivateRoute chave="fornecedores"><FornecedorPage /></PrivateRoute>} />
         <Route path="financeiro"   element={<PrivateRoute soFinanceiro><FinanceiroPage /></PrivateRoute>} />
         <Route path="financeiro/cliente/:codigo" element={<PrivateRoute soFinanceiro><ClienteDetalhePage /></PrivateRoute>} />
