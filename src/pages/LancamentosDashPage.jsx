@@ -14,7 +14,9 @@ export default function LancamentosDashPage() {
   const navigate = useNavigate()
   const [sel, setSel] = useState('todos')      // todos | efetivado | parcial
   const [metrica, setMetrica] = useState('valorCusto')  // valorCusto | valorVenda | pecas
-  const [granul, setGranul] = useState('mes')  // mes | dia — granularidade do gráfico
+  const [granul, setGranul] = useState('mes')  // ano | mes | dia — granularidade do gráfico
+  const [anoF, setAnoF] = useState('')         // '' = todos
+  const [mesF, setMesF] = useState('')         // '' = todos (YYYY-MM)
 
   const q = useQuery({
     queryKey: ['lancamentos'],
@@ -58,8 +60,25 @@ export default function LancamentosDashPage() {
 
   const metricaLabel = metrica === 'valorVenda' ? 'valor a venda' : metrica === 'pecas' ? 'peças' : 'valor a custo'
   const fmtMetrica = v => (metrica === 'pecas' ? fNum(v) : fBRL(v))
-  // Série do gráfico: por mês ou por dia (toggle dentro do card)
-  const serie = (granul === 'dia' ? porDia : porMes).map(it => ({ ...it, key: it.mes || it.dia, rot: it.mes ? labelMes(it.mes) : labelDia(it.dia) }))
+  // Opções dos suspensos (a partir dos dias existentes)
+  const anosOpc = [...new Set(porDia.map(d => (d.dia || '').slice(0, 4)))].filter(Boolean).sort().reverse()
+  const mesesOpc = [...new Set(porDia.map(d => (d.dia || '').slice(0, 7)))].filter(Boolean).sort().reverse()
+
+  // Série do gráfico: agrupa os dias por ano/mês/dia, aplicando os filtros de ano e mês
+  const serie = useMemo(() => {
+    let src = porDia
+    if (anoF) src = src.filter(d => (d.dia || '').slice(0, 4) === anoF)
+    if (mesF) src = src.filter(d => (d.dia || '').slice(0, 7) === mesF)
+    const keyOf = d => granul === 'ano' ? d.dia.slice(0, 4) : granul === 'mes' ? d.dia.slice(0, 7) : d.dia
+    const g = {}
+    for (const d of src) {
+      const k = keyOf(d)
+      if (!g[k]) g[k] = { key: k, pecas: 0, valorCusto: 0, valorVenda: 0 }
+      g[k].pecas += d.pecas; g[k].valorCusto += d.valorCusto; g[k].valorVenda += d.valorVenda
+    }
+    const rotOf = k => granul === 'ano' ? k : granul === 'mes' ? labelMes(k) : labelDia(k)
+    return Object.values(g).sort((a, b) => b.key.localeCompare(a.key)).map(s => ({ ...s, rot: rotOf(s.key) }))
+  }, [porDia, granul, anoF, mesF])
   const serieMax = Math.max(...serie.map(s => s[metrica]), 1)
   const fornMax = Math.max(...porForn.map(f => f[metrica]), 1)
   const th = { padding: '8px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--accent-title, var(--accent))', position: 'sticky', top: 0, background: 'var(--bg-input)', whiteSpace: 'nowrap' }
@@ -102,11 +121,23 @@ export default function LancamentosDashPage() {
 
       {/* Valor por mês/dia (toggle no card) */}
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <div className="sec-title">Por {granul === 'dia' ? 'dia' : 'mês'} — {metricaLabel}</div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <FBtn on={granul === 'mes'} onClick={() => setGranul('mes')} label="Mensal" />
-            <FBtn on={granul === 'dia'} onClick={() => setGranul('dia')} label="Diário" />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <div className="sec-title">Por {granul === 'ano' ? 'ano' : granul === 'dia' ? 'dia' : 'mês'} — {metricaLabel}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <FBtn on={granul === 'ano'} onClick={() => setGranul('ano')} label="Anual" />
+              <FBtn on={granul === 'mes'} onClick={() => setGranul('mes')} label="Mensal" />
+              <FBtn on={granul === 'dia'} onClick={() => setGranul('dia')} label="Diário" />
+            </div>
+            <select value={anoF} onChange={e => setAnoF(e.target.value)} className="inp text-xs" style={{ minWidth: 110 }}>
+              <option value="">Todos os anos</option>
+              {anosOpc.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <select value={mesF} onChange={e => setMesF(e.target.value)} className="inp text-xs" style={{ minWidth: 130 }}>
+              <option value="">Todos os meses</option>
+              {mesesOpc.filter(m => !anoF || m.slice(0, 4) === anoF).map(m => <option key={m} value={m}>{labelMes(m)}</option>)}
+            </select>
+            {(anoF || mesF) && <button onClick={() => { setAnoF(''); setMesF('') }} className="btn-ghost text-xs">✕</button>}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 200, paddingTop: 22, overflowX: 'auto' }}>
