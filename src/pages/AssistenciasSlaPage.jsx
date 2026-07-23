@@ -15,6 +15,8 @@ export default function AssistenciasSlaPage() {
   const [prazoF, setPrazoF] = useState('todos')   // todos | no | fora
   const [sitF, setSitF]     = useState('todas')    // todas | abertas | entregues
   const [busca, setBusca]   = useState('')
+  const [diaDe, setDiaDe]   = useState('')         // ISO aaaa-mm-dd
+  const [diaAte, setDiaAte] = useState('')
 
   const q = useQuery({
     queryKey: ['assistencias-geral', 'todas'],
@@ -66,15 +68,22 @@ export default function AssistenciasSlaPage() {
   }, [oss])
 
   const bq = busca.trim().toLowerCase()
+  // OS entra no filtro de dia se ENTROU ou SAIU dentro do intervalo
+  const noDia = o => {
+    if (!diaDe && !diaAte) return true
+    const e = toISO(o.entrada), s = !o.aberta ? toISO(o.saida) : ''
+    const dentro = iso => iso && (!diaDe || iso >= diaDe) && (!diaAte || iso <= diaAte)
+    return dentro(e) || dentro(s)
+  }
   const lista = useMemo(() => {
-    let l = oss
+    let l = oss.filter(noDia)
     if (prazoF === 'no')   l = l.filter(o => o.dias != null && !o.fora)
     if (prazoF === 'fora') l = l.filter(o => o.fora)
     if (sitF === 'abertas')   l = l.filter(o => o.aberta)
     if (sitF === 'entregues') l = l.filter(o => !o.aberta)
     if (bq) l = l.filter(o => (o.clienteNome || '').toLowerCase().includes(bq) || (o.fornecedor || '').toLowerCase().includes(bq) || String(o.os || '').includes(bq))
     return [...l].sort((a, b) => (b.dias || 0) - (a.dias || 0))
-  }, [oss, prazoF, sitF, bq])
+  }, [oss, prazoF, sitF, bq, diaDe, diaAte])
 
   if (q.isLoading) {
     return <div className="page-body space-y-4"><Voltar navigate={navigate} /><div className="state-box"><div className="spinner" /><p>Carregando SLA…</p></div></div>
@@ -118,9 +127,18 @@ export default function AssistenciasSlaPage() {
           </div>
         </div>
         <div>
-          <div style={lbl}>Buscar</div>
-          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Cliente, fornecedor, OS…" className="inp text-xs" style={{ width: 220 }} />
+          <div style={lbl}>Dia — de</div>
+          <input type="date" value={diaDe} onChange={e => setDiaDe(e.target.value)} className="inp text-xs" style={{ width: 150 }} />
         </div>
+        <div>
+          <div style={lbl}>Dia — até</div>
+          <input type="date" value={diaAte} onChange={e => setDiaAte(e.target.value)} className="inp text-xs" style={{ width: 150 }} />
+        </div>
+        <div>
+          <div style={lbl}>Buscar</div>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Cliente, fornecedor, OS…" className="inp text-xs" style={{ width: 200 }} />
+        </div>
+        {(diaDe || diaAte || busca) && <button onClick={() => { setDiaDe(''); setDiaAte(''); setBusca('') }} className="btn-ghost text-xs" style={{ paddingBottom: 6 }}>✕ Limpar</button>}
         <div className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{fNum(lista.length)} OSs</div>
       </div>
 
@@ -138,13 +156,18 @@ export default function AssistenciasSlaPage() {
                 </tr>
               </thead>
               <tbody>
-                {porDia.map((d, i) => (
-                  <tr key={d.dia} style={{ borderTop: '1px solid var(--border)', background: i % 2 ? 'var(--bg-card2)' : undefined }}>
-                    <td style={{ ...td, color: 'var(--text)' }}>{isoLabel(d.dia)}</td>
-                    <td style={{ ...td, textAlign: 'center', color: '#fb923c', fontWeight: 700 }}>{d.abriram || '—'}</td>
-                    <td style={{ ...td, textAlign: 'center', color: '#a3e635', fontWeight: 700 }}>{d.entregues || '—'}</td>
-                  </tr>
-                ))}
+                {porDia.map((d, i) => {
+                  const sel = diaDe === d.dia && diaAte === d.dia
+                  return (
+                    <tr key={d.dia} onClick={() => sel ? (setDiaDe(''), setDiaAte('')) : (setDiaDe(d.dia), setDiaAte(d.dia))}
+                      title="Clique para filtrar este dia"
+                      style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', background: sel ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : i % 2 ? 'var(--bg-card2)' : undefined }}>
+                      <td style={{ ...td, color: sel ? 'var(--accent-title, var(--accent))' : 'var(--text)', fontWeight: sel ? 800 : 400 }}>{isoLabel(d.dia)}</td>
+                      <td style={{ ...td, textAlign: 'center', color: '#fb923c', fontWeight: 700 }}>{d.abriram || '—'}</td>
+                      <td style={{ ...td, textAlign: 'center', color: '#a3e635', fontWeight: 700 }}>{d.entregues || '—'}</td>
+                    </tr>
+                  )
+                })}
                 {porDia.length === 0 && <tr><td colSpan={3} style={{ ...td, color: 'var(--text-dim)', padding: 14 }}>Sem dados.</td></tr>}
               </tbody>
             </table>
