@@ -14,6 +14,7 @@ export default function LancamentosDashPage() {
   const navigate = useNavigate()
   const [sel, setSel] = useState('todos')      // todos | efetivado | parcial
   const [metrica, setMetrica] = useState('valorCusto')  // valorCusto | valorVenda | pecas
+  const [granul, setGranul] = useState('mes')  // mes | dia — granularidade do gráfico
 
   const q = useQuery({
     queryKey: ['lancamentos'],
@@ -57,7 +58,9 @@ export default function LancamentosDashPage() {
 
   const metricaLabel = metrica === 'valorVenda' ? 'valor a venda' : metrica === 'pecas' ? 'peças' : 'valor a custo'
   const fmtMetrica = v => (metrica === 'pecas' ? fNum(v) : fBRL(v))
-  const mesMax = Math.max(...porMes.map(m => m[metrica]), 1)
+  // Série do gráfico: por mês ou por dia (toggle dentro do card)
+  const serie = (granul === 'dia' ? porDia : porMes).map(it => ({ ...it, key: it.mes || it.dia, rot: it.mes ? labelMes(it.mes) : labelDia(it.dia) }))
+  const serieMax = Math.max(...serie.map(s => s[metrica]), 1)
   const fornMax = Math.max(...porForn.map(f => f[metrica]), 1)
   const th = { padding: '8px 10px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--accent-title, var(--accent))', position: 'sticky', top: 0, background: 'var(--bg-input)', whiteSpace: 'nowrap' }
   const td = { padding: '7px 10px', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap' }
@@ -97,22 +100,28 @@ export default function LancamentosDashPage() {
         </div>
       </div>
 
-      {/* Valor por mês */}
+      {/* Valor por mês/dia (toggle no card) */}
       <div className="card">
-        <div className="sec-title">Por mês — {metricaLabel}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div className="sec-title">Por {granul === 'dia' ? 'dia' : 'mês'} — {metricaLabel}</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <FBtn on={granul === 'mes'} onClick={() => setGranul('mes')} label="Mensal" />
+            <FBtn on={granul === 'dia'} onClick={() => setGranul('dia')} label="Diário" />
+          </div>
+        </div>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 200, paddingTop: 22, overflowX: 'auto' }}>
-          {porMes.map(m => {
-            const h = Math.max(3, (m[metrica] / mesMax) * 150)
+          {serie.map(m => {
+            const h = Math.max(3, (m[metrica] / serieMax) * 150)
             return (
-              <div key={m.mes} title={`${labelMes(m.mes)} · custo ${fBRL(m.valorCusto)} · venda ${fBRL(m.valorVenda)} · ${fNum(m.pecas)} peças · ${fNum(m.lancamentos)} lançamentos`}
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: '1 0 44px', minWidth: 44 }}>
+              <div key={m.key} title={`${m.rot} · custo ${fBRL(m.valorCusto)} · venda ${fBRL(m.valorVenda)} · ${fNum(m.pecas)} peças${m.lancamentos != null ? ` · ${fNum(m.lancamentos)} lançamentos` : ''}`}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: `1 0 ${granul === 'dia' ? 34 : 44}px`, minWidth: granul === 'dia' ? 34 : 44 }}>
                 <div style={{ fontSize: 9.5, color: '#c084fc', fontWeight: 700, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{metrica === 'pecas' ? fNumc(m[metrica]) : fBRLc(m[metrica])}</div>
                 <div style={{ width: '100%', maxWidth: 46, height: h, borderRadius: '6px 6px 0 0', background: 'linear-gradient(180deg,#d8b4fe,#a855f7 60%,#7c3aed)', boxShadow: '0 0 12px rgba(168,85,247,.35)' }} />
-                <div style={{ fontSize: 10, color: 'var(--text-sec)', fontWeight: 700, fontFamily: 'monospace' }}>{labelMes(m.mes)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-sec)', fontWeight: 700, fontFamily: 'monospace' }}>{m.rot}</div>
               </div>
             )
           })}
-          {porMes.length === 0 && <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Sem dados para este status.</div>}
+          {serie.length === 0 && <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Sem dados para este status.</div>}
         </div>
       </div>
 
