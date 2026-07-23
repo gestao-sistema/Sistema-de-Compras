@@ -10,6 +10,7 @@ import FinanceiroPage from './pages/FinanceiroPage'
 import ClienteDetalhePage from './pages/ClienteDetalhePage'
 import VendedorDetalhePage from './pages/VendedorDetalhePage'
 import AssistenciasPage from './pages/AssistenciasPage'
+import AssistenciasSlaPage from './pages/AssistenciasSlaPage'
 import PedidosPage from './pages/PedidosPage'
 import LancamentosPage from './pages/LancamentosPage'
 import FornecedorPage from './pages/FornecedorPage'
@@ -48,6 +49,7 @@ function AppRoutes() {
         <Route path="financeiro/cliente/:codigo" element={<PrivateRoute soFinanceiro><ClienteDetalhePage /></PrivateRoute>} />
         <Route path="financeiro/vendedor/:codigo" element={<PrivateRoute soFinanceiro><VendedorDetalhePage /></PrivateRoute>} />
         <Route path="assistencias" element={<PrivateRoute chave="assistencias"><AssistenciasPage /></PrivateRoute>} />
+        <Route path="assistencias/sla" element={<PrivateRoute chave="assistencias"><AssistenciasSlaPage /></PrivateRoute>} />
         <Route path="admin"        element={<PrivateRoute soAdmin><AdminPage /></PrivateRoute>} />
         <Route path="*"            element={<Navigate to="/" replace />} />
       </Route>

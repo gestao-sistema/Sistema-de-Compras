@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api, fBRL, fNum } from '../api/client'
 import KPICard from '../components/KPICard'
@@ -95,6 +96,7 @@ const FORN = '#22d3ee'  // Fornecedor → ciano
 
 
 export default function AssistenciasPage() {
+  const navigate = useNavigate()
   const status = 'todas'
   const [busca,  setBusca]  = useState('')
   const [sortK,  setSortK]  = useState('diasEmAberto')
@@ -314,7 +316,7 @@ export default function AssistenciasPage() {
         {/* Cards */}
         <div className="flex items-center justify-between">
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>Assistência Técnica</div>
-          <button onClick={() => setFicha({ titulo: 'Geral', rows: filtradas, dim: 'fornecedor' })} className="text-xs font-bold rounded"
+          <button onClick={() => navigate('/assistencias/sla')} className="text-xs font-bold rounded"
             style={{ background: 'var(--accent)', color: 'var(--accent-text)', padding: '7px 14px', border: 'none', cursor: 'pointer' }}>
             📊 Dashboard de SLA
           </button>
@@ -324,7 +326,7 @@ export default function AssistenciasPage() {
           <KPICard label="OS Encerradas"    value={fNum(cards.ossEncerradas)}   sub="com data de encerramento"        color="green"  icon="✓" />
           <KPICard label="OS sem Fornecedor" value={fNum(cards.ossSemForn)}     sub="produto sem fornecedor no serviço" color="orange" icon="◷" />
           <KPICard label="Total SKU"        value={fNum(cards.totalSku)}        sub="itens de produto"                color="purple" icon="◈" />
-          <div onClick={() => setFicha({ titulo: 'Geral', rows: filtradas, dim: 'fornecedor' })} style={{ cursor: 'pointer' }} title="Ver dashboard de SLA">
+          <div onClick={() => navigate('/assistencias/sla')} style={{ cursor: 'pointer' }} title="Abrir dashboard de SLA">
             <KPICard label="SLA"            value={`${fNum(cards.slaMedio)} d`}  sub="média por OS · clique p/ detalhar" color="yellow" icon="⏱" />
           </div>
           <CardValores cards={cards} />
