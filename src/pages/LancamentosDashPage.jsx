@@ -9,6 +9,12 @@ const labelDia = d => { const p = (d || '').split('-'); return p[2] ? `${p[2]}/$
 const fBRLc = v => { const a = Math.abs(v || 0); if (a >= 1e9) return `R$ ${(v / 1e9).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} bi`; if (a >= 1e6) return `R$ ${(v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} mi`; if (a >= 1e3) return `R$ ${(v / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`; return fBRL(v) }
 const fNumc = v => { const a = Math.abs(v || 0); if (a >= 1e6) return `${(v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} mi`; if (a >= 1e3) return `${(v / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`; return fNum(v) }
 const VAZIO = { pecas: 0, valorCusto: 0, valorVenda: 0, skus: 0, lancamentos: 0, fornecedores: 0 }
+const EMPRESA = (typeof localStorage !== 'undefined' && localStorage.getItem('empresa')) || 'alinare'
+// URL da foto por SKU (Alinare: HTTPS direto; Novitah: HTTP via proxy do app)
+const fotoSku = sku => EMPRESA === 'novitah'
+  ? `/api/img?u=${encodeURIComponent(`http://portalvps250.indepinfo.com.br:29538/imagens/produtos/${sku}.jpg`)}`
+  : `https://fotos.alinare.indepcloud.com.br/imagens/produtos/${sku}.jpg`
+const statusMatch = (sel, st) => sel === 'todos' ? true : sel === 'parcial' ? /parcial/i.test(st) : (/efetiv/i.test(st) && !/parcial/i.test(st))
 
 export default function LancamentosDashPage() {
   const navigate = useNavigate()
@@ -43,6 +49,30 @@ export default function LancamentosDashPage() {
     }
     return Object.values(map).sort((a, b) => b[metrica] - a[metrica]).slice(0, 15)
   }, [meses, sel, metrica])
+
+  // Galeria: SKUs distintos lançados (usa o detalhe dos meses recentes), respeitando
+  // status + ano/mês selecionados. Cada SKU vira uma miniatura.
+  const GALERIA_MAX = 240
+  const galeria = useMemo(() => {
+    const anoSet = new Set(anoSel), mesSet = new Set(mesSel)
+    const vistos = new Map()
+    for (const m of meses) {
+      for (const d of (m.dias || [])) {
+        const dia = d.dia || ''
+        if (anoSet.size && !anoSet.has(dia.slice(0, 4))) continue
+        if (mesSet.size && !mesSet.has(dia.slice(0, 7))) continue
+        for (const f of (d.fornecedores || [])) {
+          for (const L of (f.lancs || [])) {
+            if (!statusMatch(sel, L.status)) continue
+            for (const it of (L.itens || [])) {
+              if (it.sku && !vistos.has(it.sku)) vistos.set(it.sku, { sku: it.sku, descricao: it.descricao || '', fornecedor: f.nome, data: dia })
+            }
+          }
+        }
+      }
+    }
+    return [...vistos.values()]
+  }, [meses, sel, anoSel, mesSel])
 
   // Por dia (todos os dias, mês a mês)
   const porDia = useMemo(() => {
@@ -201,8 +231,21 @@ export default function LancamentosDashPage() {
         </div>
       </div>
 
+      {/* Galeria de produtos lançados */}
+      <div className="card">
+        <div className="sec-title">Galeria de produtos lançados ({fNum(galeria.length)})</div>
+        {galeria.length === 0 ? (
+          <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 6 }}>Sem produtos no detalhe para este filtro (a galeria usa os meses mais recentes).</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(116px, 1fr))', gap: 10, marginTop: 8, maxHeight: '70vh', overflowY: 'auto' }}>
+            {galeria.slice(0, GALERIA_MAX).map(g => <FotoTile key={g.sku} {...g} />)}
+          </div>
+        )}
+        {galeria.length > GALERIA_MAX && <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 8 }}>+{fNum(galeria.length - GALERIA_MAX)} produtos… refine por ano/mês para ver mais.</div>}
+      </div>
+
       <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>
-        Agrupado por data de lançamento. Valores a custo e a preço de venda × quantidade. Fornecedores somam peças e valores (SKUs não são somados entre dias).
+        Agrupado por data de lançamento. Valores a custo e a preço de venda × quantidade. Fornecedores somam peças e valores (SKUs não são somados entre dias). Galeria usa os meses com detalhe.
       </div>
     </div>
   )
@@ -257,6 +300,24 @@ function MultiCheck({ label, value, onChange, options, fmt = o => o, width = 140
           {options.length === 0 && <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--text-dim)' }}>—</div>}
         </div>
       )}
+    </div>
+  )
+}
+
+// Miniatura de produto (esconde/placeholder quando a foto dá 404)
+function FotoTile({ sku, descricao, fornecedor, data }) {
+  const [erro, setErro] = useState(false)
+  return (
+    <div style={{ border: '1px solid var(--border2)', borderRadius: 8, overflow: 'hidden', background: 'var(--bg-input)' }} title={`${descricao}\nSKU ${sku}${fornecedor ? ` · ${fornecedor}` : ''}`}>
+      <div style={{ width: '100%', height: 120, background: 'var(--bg-card2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {erro
+          ? <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>sem foto</span>
+          : <img src={fotoSku(sku)} loading="lazy" onError={() => setErro(true)} alt={descricao} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+      </div>
+      <div style={{ padding: '5px 7px' }}>
+        <div style={{ fontFamily: 'monospace', fontSize: 10.5, color: '#f5c518', fontWeight: 700 }}>{sku}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{descricao || '—'}</div>
+      </div>
     </div>
   )
 }
