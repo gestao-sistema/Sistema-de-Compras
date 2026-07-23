@@ -44,16 +44,30 @@ export default function AssistenciasSlaPage() {
     return [...m.values()].map(o => ({ ...o, fora: o.dias != null && o.dias > PRAZO_LIMITE }))
   }, [rows])
 
+  const bq = busca.trim().toLowerCase()
+
+  // Base filtrada por conteúdo (prazo, situação, busca) — SEM o filtro de dia.
+  // O "Por dia" e a lista partem daqui; só a lista aplica também o intervalo de dia.
+  const base = useMemo(() => {
+    let l = oss
+    if (prazoF === 'no')   l = l.filter(o => o.dias != null && !o.fora)
+    if (prazoF === 'fora') l = l.filter(o => o.fora)
+    if (sitF === 'abertas')   l = l.filter(o => o.aberta)
+    if (sitF === 'entregues') l = l.filter(o => !o.aberta)
+    if (bq) l = l.filter(o => (o.clienteNome || '').toLowerCase().includes(bq) || (o.fornecedor || '').toLowerCase().includes(bq) || String(o.os || '').includes(bq))
+    return l
+  }, [oss, prazoF, sitF, bq])
+
   // Resumo por dia: quantas ABRIRAM (entrada) e quantas foram ENTREGUES (saída) naquele dia
   const porDia = useMemo(() => {
     const m = {}
     const bump = (iso, campo) => { if (!iso) return; (m[iso] = m[iso] || { dia: iso, abriram: 0, entregues: 0 })[campo]++ }
-    for (const o of oss) {
+    for (const o of base) {
       bump(toISO(o.entrada), 'abriram')
       if (!o.aberta) bump(toISO(o.saida), 'entregues')
     }
     return Object.values(m).sort((a, b) => b.dia.localeCompare(a.dia))
-  }, [oss])
+  }, [base])
 
   const kpis = useMemo(() => {
     const comDias = oss.filter(o => o.dias != null)
@@ -67,7 +81,6 @@ export default function AssistenciasSlaPage() {
     }
   }, [oss])
 
-  const bq = busca.trim().toLowerCase()
   // OS entra no filtro de dia se ENTROU ou SAIU dentro do intervalo
   const noDia = o => {
     if (!diaDe && !diaAte) return true
@@ -75,15 +88,7 @@ export default function AssistenciasSlaPage() {
     const dentro = iso => iso && (!diaDe || iso >= diaDe) && (!diaAte || iso <= diaAte)
     return dentro(e) || dentro(s)
   }
-  const lista = useMemo(() => {
-    let l = oss.filter(noDia)
-    if (prazoF === 'no')   l = l.filter(o => o.dias != null && !o.fora)
-    if (prazoF === 'fora') l = l.filter(o => o.fora)
-    if (sitF === 'abertas')   l = l.filter(o => o.aberta)
-    if (sitF === 'entregues') l = l.filter(o => !o.aberta)
-    if (bq) l = l.filter(o => (o.clienteNome || '').toLowerCase().includes(bq) || (o.fornecedor || '').toLowerCase().includes(bq) || String(o.os || '').includes(bq))
-    return [...l].sort((a, b) => (b.dias || 0) - (a.dias || 0))
-  }, [oss, prazoF, sitF, bq, diaDe, diaAte])
+  const lista = useMemo(() => [...base.filter(noDia)].sort((a, b) => (b.dias || 0) - (a.dias || 0)), [base, diaDe, diaAte])
 
   if (q.isLoading) {
     return <div className="page-body space-y-4"><Voltar navigate={navigate} /><div className="state-box"><div className="spinner" /><p>Carregando SLA…</p></div></div>
